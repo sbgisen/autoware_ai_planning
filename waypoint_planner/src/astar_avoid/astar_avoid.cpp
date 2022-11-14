@@ -437,7 +437,14 @@ int AstarAvoid::getLocalClosestWaypoint(const autoware_msgs::Lane& waypoints, co
     local_waypoints.waypoints = std::vector<autoware_msgs::Waypoint>(start_itr, end_itr);
 
     // get closest waypoint in neighborhood waypoints
-    closest_local_index_ = start_index + getClosestWaypoint(local_waypoints, pose);
+    auto closest = getClosestWaypoint(local_waypoints, pose);
+    if (closest == -1)
+    {
+      ROS_ERROR("Can't find closest waypoint in local waypoints");
+      closest_local_index_ = closest;
+    }
+    else
+      closest_local_index_ = start_index + getClosestWaypoint(local_waypoints, pose);
   }
 
   return closest_local_index_;
