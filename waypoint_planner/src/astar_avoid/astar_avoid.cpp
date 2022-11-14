@@ -381,9 +381,10 @@ void AstarAvoid::publishWaypoints()
     safety_waypoints.increment = current_waypoints.increment;
 
     // push waypoints from closest index
+    int closest = getLocalClosestWaypoint(current_waypoints, current_pose_global_.pose, closest_search_size_);
     for (int i = 0; i < safety_waypoints_size_; ++i)
     {
-      int index = getLocalClosestWaypoint(current_waypoints, current_pose_global_.pose, closest_search_size_) + i;
+      int index = closest + i;
       if (index < 0 || static_cast<int>(current_waypoints.waypoints.size()) <= index)
       {
         break;
