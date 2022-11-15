@@ -77,7 +77,8 @@ grid_map::Index PointsToCostmap::fetchGridIndexFromPoint(const pcl::PointXYZ& po
 }
 
 std::vector<std::vector<std::vector<double>>> PointsToCostmap::assignPoints2GridCell(
-    const grid_map::GridMap& gridmap, const pcl::PointCloud<pcl::PointXYZ>::Ptr& in_sensor_points)
+    const grid_map::GridMap& gridmap,
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr& in_sensor_points, const double expand_point_distance)
 {
   double y_cell_size = std::ceil(grid_length_y_ * (1 / grid_resolution_));
   double x_cell_size = std::ceil(grid_length_x_ * (1 / grid_resolution_));
@@ -88,9 +89,17 @@ std::vector<std::vector<std::vector<double>>> PointsToCostmap::assignPoints2Grid
   for (const auto& point : *in_sensor_points)
   {
     grid_map::Index grid_ind = fetchGridIndexFromPoint(point);
-    if (isValidInd(grid_ind))
+    int expand = std::ceil(expand_point_distance / grid_resolution_);
+    for (auto i = -expand; i < expand; i++)
     {
-      vec_x_y_z[grid_ind.x()][grid_ind.y()].push_back(point.z);
+      for (auto j = -expand; j < expand; j++)
+      {
+        grid_map::Index index(grid_ind.x() + i, grid_ind.y() + j);
+        if (isValidInd(index))
+        {
+          vec_x_y_z[index.x()][index.y()].push_back(point.z);
+        }
+      }
     }
   }
   return vec_x_y_z;
@@ -129,10 +138,11 @@ grid_map::Matrix PointsToCostmap::calculateCostmap(const double maximum_height_t
 grid_map::Matrix PointsToCostmap::makeCostmapFromSensorPoints(
     const double maximum_height_thres, const double minimum_lidar_height_thres, const double grid_min_value,
     const double grid_max_value, const grid_map::GridMap& gridmap, const std::string& gridmap_layer_name,
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr& in_sensor_points)
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr& in_sensor_points, const double expand_point_distance)
 {
   initGridmapParam(gridmap);
-  std::vector<std::vector<std::vector<double>>> grid_vec = assignPoints2GridCell(gridmap, in_sensor_points);
+  std::vector<std::vector<std::vector<double>>> grid_vec =
+      assignPoints2GridCell(gridmap, in_sensor_points, expand_point_distance);
   grid_map::Matrix costmap = calculateCostmap(maximum_height_thres, minimum_lidar_height_thres, grid_min_value,
                                               grid_max_value, gridmap, gridmap_layer_name, grid_vec);
   return costmap;

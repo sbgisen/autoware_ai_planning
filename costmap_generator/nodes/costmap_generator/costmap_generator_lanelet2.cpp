@@ -63,6 +63,7 @@ void CostmapGeneratorLanelet2::init()
   private_nh_.param<bool>("use_points", use_points_, true);
   private_nh_.param<bool>("use_wayarea", use_wayarea_, true);
   private_nh_.param<double>("expand_polygon_size", expand_polygon_size_, 1.0);
+  private_nh_.param<double>("expand_point_distance", expand_point_distance_, 0.2);
   private_nh_.param<int>("size_of_expansion_kernel", size_of_expansion_kernel_, 9);
 
   initGridmap();
@@ -180,7 +181,7 @@ CostmapGeneratorLanelet2::generateSensorPointsCostmap(const pcl::PointCloud<pcl:
 {
   grid_map::Matrix sensor_points_costmap = points2costmap_.makeCostmapFromSensorPoints(
       maximum_lidar_height_thres_, minimum_lidar_height_thres_, grid_min_value_, grid_max_value_, costmap_,
-      SENSOR_POINTS_COSTMAP_LAYER_, in_sensor_points);
+      SENSOR_POINTS_COSTMAP_LAYER_, in_sensor_points, expand_point_distance_);
   return sensor_points_costmap;
 }
 
