@@ -253,6 +253,14 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
     return false;
   }
 
+  if (std::find_if(avoid_waypoints_.waypoints.begin() + closest_waypoint_index_,
+                   avoid_waypoints_.waypoints.begin() + closest_waypoint_index_ + obstacle_waypoint_index_ + 1,
+                   [](const autoware_msgs::Waypoint& wp) {
+                     return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
+                   }) != avoid_waypoints_.waypoints.begin() + closest_waypoint_index_ + obstacle_waypoint_index_ + 1)
+  {
+    return false;
+  }
   // update goal pose incrementally and execute A* search
   for (int i = search_waypoints_delta_; i < static_cast<int>(search_waypoints_size_); i += search_waypoints_delta_)
   {
@@ -262,6 +270,16 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
     //       should be combined together to prevent this kind of inconsistency.
     int goal_waypoint_index = closest_waypoint_index_ + obstacle_waypoint_index_ + i;
     if (goal_waypoint_index >= static_cast<int>(avoid_waypoints_.waypoints.size()))
+    {
+      break;
+    }
+
+    auto result = std::find_if(avoid_waypoints_.waypoints.begin() + goal_waypoint_index - search_waypoints_delta_,
+                               avoid_waypoints_.waypoints.begin() + goal_waypoint_index + 1,
+                               [](const autoware_msgs::Waypoint& wp) {
+                                 return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
+                               });
+    if (result != avoid_waypoints_.waypoints.begin() + goal_waypoint_index + 1)
     {
       break;
     }
