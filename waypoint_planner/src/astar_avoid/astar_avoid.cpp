@@ -382,6 +382,7 @@ void AstarAvoid::publishWaypoints()
         break;
       case AstarAvoid::STATE::STOPPING:
         // do nothing, keep current waypoints
+        current_waypoints = base_waypoints_;
         break;
       case AstarAvoid::STATE::PLANNING:
         // do nothing, keep current waypoints
