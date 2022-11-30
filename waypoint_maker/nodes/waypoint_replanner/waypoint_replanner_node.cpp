@@ -67,15 +67,15 @@ WaypointReplannerNode::WaypointReplannerNode() : pnh_("~"), is_first_publish_(tr
 
   if (use_decision_maker_)
   {
-    lane_pub_ = nh_.advertise<autoware_msgs::LaneArray>("/based/lane_waypoints_array", 10, true);
+    lane_pub_ = nh_.advertise<autoware_msgs::LaneArray>("based/lane_waypoints_array", 10, true);
   }
   else
   {
-    lane_pub_ = nh_.advertise<autoware_msgs::LaneArray>("/lane_waypoints_array", 10, true);
+    lane_pub_ = nh_.advertise<autoware_msgs::LaneArray>("lane_waypoints_array", 10, true);
   }
 
-  lane_sub_ = nh_.subscribe("/based/lane_waypoints_raw", 1, &WaypointReplannerNode::laneCallback, this);
-  config_sub_ = nh_.subscribe("/config/waypoint_replanner", 1, &WaypointReplannerNode::configCallback, this);
+  lane_sub_ = nh_.subscribe("based/lane_waypoints_raw", 1, &WaypointReplannerNode::laneCallback, this);
+  config_sub_ = nh_.subscribe("config/waypoint_replanner", 1, &WaypointReplannerNode::configCallback, this);
 }
 
 void WaypointReplannerNode::replan(autoware_msgs::LaneArray& lane_array)
