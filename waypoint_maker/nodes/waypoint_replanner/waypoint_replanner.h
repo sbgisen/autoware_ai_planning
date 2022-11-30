@@ -45,6 +45,7 @@ struct WaypointReplannerConfig
   bool replan_endpoint_mode = false;
   // The number of consective waypoints used to compute the local radius.
   int lookup_crv_width = 5;
+  int end_point_offset = 1;
 };
 
 class WaypointReplanner

@@ -372,6 +372,11 @@ void create_waypoint(const autoware_msgs::LaneArray& msg)
     // check if any waypoint segments are intersected by stoplines
     std::vector<size_t> waypoint_stopline_indexes = check_waypoints_for_stoplines(waypoints);
 
+    for (const size_t i : waypoint_stopline_indexes)
+    {
+      waypoint_lane.waypoints[i].wpstate.stop_state = autoware_msgs::WaypointState::TYPE_STOPLINE;
+    }
+
     traffic_waypoint.lanes.push_back(waypoint_lane);
     green_waypoint.lanes.push_back(waypoint_lane);
 

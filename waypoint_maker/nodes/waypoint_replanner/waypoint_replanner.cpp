@@ -93,9 +93,9 @@ void WaypointReplanner::replanLaneWaypointVel(autoware_msgs::Lane& lane)
   if (config_.replan_endpoint_mode)
   {
     // set last waypoint speed to zero
-    setVelocityByRange(last - 1, last, 0.0, lane);
+    setVelocityByRange(last - config_.end_point_offset, last, 0.0, lane);
     // set minimum speed for each waypoint except for the last waypoint.
-    raiseVelocityByRange(0, last - 1, config_.velocity_min, lane);
+    raiseVelocityByRange(0, last - config_.end_point_offset, config_.velocity_min, lane);
     // smooth it out again
     limitVelocityByRange(0, last, config_.velocity_max, lane);
   }

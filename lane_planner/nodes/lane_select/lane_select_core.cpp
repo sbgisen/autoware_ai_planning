@@ -51,8 +51,8 @@ void LaneSelectNode::initForROS()
 {
   // setup subscriber
   sub1_ = nh_.subscribe("traffic_waypoints_array", 1, &LaneSelectNode::callbackFromLaneArray, this);
-  sub5_ = nh_.subscribe("/config/lane_select", 1, &LaneSelectNode::callbackFromConfig, this);
-  sub6_ = nh_.subscribe("/decision_maker/state", 1, &LaneSelectNode::callbackFromDecisionMakerState, this);
+  sub5_ = nh_.subscribe("config/lane_select", 1, &LaneSelectNode::callbackFromConfig, this);
+  sub6_ = nh_.subscribe("decision_maker/state", 1, &LaneSelectNode::callbackFromDecisionMakerState, this);
   sub2_.subscribe(nh_, "current_pose", 1);
   sub3_.subscribe(nh_, "current_velocity", 1);
   pose_twist_sync_.reset(new PoseTwistSync(PoseTwistSyncPolicy(10), sub2_, sub3_));

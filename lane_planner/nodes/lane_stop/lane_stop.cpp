@@ -108,15 +108,15 @@ int main(int argc, char **argv)
   n.param<bool>("/lane_stop/pub_waypoint_latch", pub_waypoint_latch, true);
   n.param<bool>("/lane_stop/manual_detection", config_manual_detection, true);
 
-  traffic_pub = n.advertise<autoware_msgs::LaneArray>("/traffic_waypoints_array", pub_waypoint_queue_size,
+  traffic_pub = n.advertise<autoware_msgs::LaneArray>("traffic_waypoints_array", pub_waypoint_queue_size,
                 pub_waypoint_latch);
 
-  ros::Subscriber light_sub = n.subscribe("/light_color", sub_light_queue_size, receive_auto_detection);
-  ros::Subscriber light_managed_sub = n.subscribe("/light_color_managed", sub_light_queue_size,
+  ros::Subscriber light_sub = n.subscribe("light_color", sub_light_queue_size, receive_auto_detection);
+  ros::Subscriber light_managed_sub = n.subscribe("light_color_managed", sub_light_queue_size,
               receive_manual_detection);
-  ros::Subscriber red_sub = n.subscribe("/red_waypoints_array", sub_waypoint_queue_size, cache_red_lane);
-  ros::Subscriber green_sub = n.subscribe("/green_waypoints_array", sub_waypoint_queue_size, cache_green_lane);
-  ros::Subscriber config_sub = n.subscribe("/config/lane_stop", sub_config_queue_size, config_parameter);
+  ros::Subscriber red_sub = n.subscribe("red_waypoints_array", sub_waypoint_queue_size, cache_red_lane);
+  ros::Subscriber green_sub = n.subscribe("green_waypoints_array", sub_waypoint_queue_size, cache_green_lane);
+  ros::Subscriber config_sub = n.subscribe("config/lane_stop", sub_config_queue_size, config_parameter);
 
   ros::spin();
 

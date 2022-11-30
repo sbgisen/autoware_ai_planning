@@ -59,6 +59,7 @@ WaypointReplannerNode::WaypointReplannerNode() : pnh_("~"), is_first_publish_(tr
   pnh_.param<bool>("replan_curve_mode", temp_config.replan_curve_mode, false);
   pnh_.param<bool>("replan_endpoint_mode", temp_config.replan_endpoint_mode, false);
   pnh_.param<bool>("use_decision_maker", use_decision_maker_, false);
+  pnh_.param<int>("end_point_offset", temp_config.end_point_offset, 1);
 
   temp_config.velocity_max = kmph2mps(velocity_max_kph);
   temp_config.velocity_min = kmph2mps(velocity_min_kph);
@@ -67,15 +68,15 @@ WaypointReplannerNode::WaypointReplannerNode() : pnh_("~"), is_first_publish_(tr
 
   if (use_decision_maker_)
   {
-    lane_pub_ = nh_.advertise<autoware_msgs::LaneArray>("/based/lane_waypoints_array", 10, true);
+    lane_pub_ = nh_.advertise<autoware_msgs::LaneArray>("based/lane_waypoints_array", 10, true);
   }
   else
   {
-    lane_pub_ = nh_.advertise<autoware_msgs::LaneArray>("/lane_waypoints_array", 10, true);
+    lane_pub_ = nh_.advertise<autoware_msgs::LaneArray>("lane_waypoints_array", 10, true);
   }
 
-  lane_sub_ = nh_.subscribe("/based/lane_waypoints_raw", 1, &WaypointReplannerNode::laneCallback, this);
-  config_sub_ = nh_.subscribe("/config/waypoint_replanner", 1, &WaypointReplannerNode::configCallback, this);
+  lane_sub_ = nh_.subscribe("based/lane_waypoints_raw", 1, &WaypointReplannerNode::laneCallback, this);
+  config_sub_ = nh_.subscribe("config/waypoint_replanner", 1, &WaypointReplannerNode::configCallback, this);
 }
 
 void WaypointReplannerNode::replan(autoware_msgs::LaneArray& lane_array)

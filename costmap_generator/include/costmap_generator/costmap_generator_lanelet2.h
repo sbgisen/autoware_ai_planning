@@ -88,6 +88,7 @@ private:
   double minimum_lidar_height_thres_;
 
   double expand_polygon_size_;
+  double expand_point_distance_;
   int size_of_expansion_kernel_;
 
   grid_map::GridMap costmap_;

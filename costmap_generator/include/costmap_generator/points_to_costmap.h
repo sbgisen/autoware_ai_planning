@@ -56,7 +56,8 @@ public:
   grid_map::Matrix makeCostmapFromSensorPoints(const double maximum_height_thres, const double minimum_height_thres,
                                                const double grid_min_value, const double grid_max_value,
                                                const grid_map::GridMap& gridmap, const std::string& gridmap_layer_name,
-                                               const pcl::PointCloud<pcl::PointXYZ>::Ptr& in_sensor_points);
+                                               const pcl::PointCloud<pcl::PointXYZ>::Ptr& in_sensor_points,
+                                               const double expand_point_distance);
 
 private:
   friend class TestClass;
@@ -88,7 +89,7 @@ private:
   /// \param[in] in_sensor_points: subscribed pointcloud
   /// \param[out] grid-x-length x grid-y-length size grid stuffed with point's height in corresponding grid cell
   std::vector<std::vector<std::vector<double>>>
-  assignPoints2GridCell(const grid_map::GridMap& gridmap, const pcl::PointCloud<pcl::PointXYZ>::Ptr& in_sensor_points);
+  assignPoints2GridCell(const grid_map::GridMap& gridmap, const pcl::PointCloud<pcl::PointXYZ>::Ptr& in_sensor_points, const double expand_point_distance);
 
   /// \brief calculate costmap from subscribed pointcloud
   /// \param[in] maximum_height_thres: Maximum height threshold for pointcloud data
