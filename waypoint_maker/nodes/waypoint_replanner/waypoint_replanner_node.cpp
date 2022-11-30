@@ -59,6 +59,7 @@ WaypointReplannerNode::WaypointReplannerNode() : pnh_("~"), is_first_publish_(tr
   pnh_.param<bool>("replan_curve_mode", temp_config.replan_curve_mode, false);
   pnh_.param<bool>("replan_endpoint_mode", temp_config.replan_endpoint_mode, false);
   pnh_.param<bool>("use_decision_maker", use_decision_maker_, false);
+  pnh_.param<int>("end_point_offset", temp_config.end_point_offset, 1);
 
   temp_config.velocity_max = kmph2mps(velocity_max_kph);
   temp_config.velocity_min = kmph2mps(velocity_min_kph);
