@@ -30,6 +30,7 @@ AstarAvoid::AstarAvoid()
   private_nh_.param<int>("search_waypoints_size", search_waypoints_size_, 50);
   private_nh_.param<int>("search_waypoints_delta", search_waypoints_delta_, 2);
   private_nh_.param<int>("closest_search_size", closest_search_size_, 30);
+  private_nh_.param<int>("stopline_ahead_num", stopline_ahead_num_, 1);
 
   safety_waypoints_pub_ = nh_.advertise<autoware_msgs::Lane>("safety_waypoints", 1, true);
   costmap_sub_ = nh_.subscribe("costmap", 1, &AstarAvoid::costmapCallback, this);
@@ -253,11 +254,15 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
     return false;
   }
 
-  if (std::find_if(avoid_waypoints_.waypoints.begin() + closest_waypoint_index_,
-                   avoid_waypoints_.waypoints.begin() + closest_waypoint_index_ + obstacle_waypoint_index_ + 1,
+  auto it =
+      closest_waypoint_index_ + obstacle_waypoint_index_ + stopline_ahead_num_ + 1 > avoid_waypoints_.waypoints.size() ?
+          avoid_waypoints_.waypoints.end() :
+          avoid_waypoints_.waypoints.begin() + closest_waypoint_index_ + obstacle_waypoint_index_ +
+              stopline_ahead_num_ + 1;
+  if (std::find_if(avoid_waypoints_.waypoints.begin() + closest_waypoint_index_, it,
                    [](const autoware_msgs::Waypoint& wp) {
                      return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
-                   }) != avoid_waypoints_.waypoints.begin() + closest_waypoint_index_ + obstacle_waypoint_index_ + 1)
+                   }) != it)
   {
     return false;
   }
@@ -274,12 +279,14 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
       break;
     }
 
-    auto result = std::find_if(avoid_waypoints_.waypoints.begin() + goal_waypoint_index - search_waypoints_delta_,
-                               avoid_waypoints_.waypoints.begin() + goal_waypoint_index + 1,
+    auto it2 = goal_waypoint_index + stopline_ahead_num_ + 1 > avoid_waypoints_.waypoints.size() ?
+                   avoid_waypoints_.waypoints.end() :
+                   avoid_waypoints_.waypoints.begin() + goal_waypoint_index + stopline_ahead_num_ + 1;
+    auto result = std::find_if(avoid_waypoints_.waypoints.begin() + goal_waypoint_index - search_waypoints_delta_, it2,
                                [](const autoware_msgs::Waypoint& wp) {
                                  return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
                                });
-    if (result != avoid_waypoints_.waypoints.begin() + goal_waypoint_index + 1)
+    if (result != it2)
     {
       break;
     }

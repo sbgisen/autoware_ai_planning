@@ -75,6 +75,7 @@ private:
   int search_waypoints_size_;       // range of waypoints for incremental search [-]
   int search_waypoints_delta_;      // skipped waypoints for incremental search [-]
   int closest_search_size_;         // search closest waypoint around your car [-]
+  int stopline_ahead_num_;
 
   // classes
   AstarSearch astar_;
