@@ -95,7 +95,7 @@ std::vector<std::vector<std::vector<double>>> PointsToCostmap::assignPoints2Grid
       for (auto j = -expand; j < expand; j++)
       {
         grid_map::Index index(grid_ind.x() + i, grid_ind.y() + j);
-        if (isValidInd(index))
+        if (isValidInd(index) && (i * i + j * j <= expand * expand))
         {
           vec_x_y_z[index.x()][index.y()].push_back(point.z);
         }
