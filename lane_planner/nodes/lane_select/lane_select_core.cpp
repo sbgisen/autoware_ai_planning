@@ -51,6 +51,7 @@ void LaneSelectNode::initForROS()
 {
   // setup subscriber
   sub1_ = nh_.subscribe("traffic_waypoints_array", 1, &LaneSelectNode::callbackFromLaneArray, this);
+  sub4_ = nh_.subscribe("stop_waypoints_array", 1, &LaneSelectNode::callbackFromStopArray, this);
   sub5_ = nh_.subscribe("config/lane_select", 1, &LaneSelectNode::callbackFromConfig, this);
   sub6_ = nh_.subscribe("decision_maker/state", 1, &LaneSelectNode::callbackFromDecisionMakerState, this);
   sub2_.subscribe(nh_, "current_pose", 1);
@@ -617,12 +618,14 @@ void LaneSelectNode::publishVehicleLocation(const int32_t clst_wp, const int32_t
   pub5_.publish(vehicle_location);
 }
 
-void LaneSelectNode::callbackFromLaneArray(const autoware_msgs::LaneArrayConstPtr &msg)
+// Initialize the entire waypoints by receiving traffic_waypoints_array. Receive only once at the beginning.
+void LaneSelectNode::callbackFromLaneArray(const autoware_msgs::LaneArrayConstPtr& msg)
 {
+  ROS_INFO("[LaneSelectNode::callbackFromLaneArray] Clearing lanes. lane_id = %d", msg->id);
   tuple_vec_.clear();
   tuple_vec_.shrink_to_fit();
   tuple_vec_.reserve(msg->lanes.size());
-  for (const auto &el : msg->lanes)
+  for (const auto& el : msg->lanes)
   {
     auto t = std::make_tuple(el, -1, ChangeFlag::unknown);
     tuple_vec_.push_back(t);
@@ -634,6 +637,31 @@ void LaneSelectNode::callbackFromLaneArray(const autoware_msgs::LaneArrayConstPt
   left_lane_idx_ = -1;
   is_new_lane_array_ = true;
   is_lane_array_subscribed_ = true;
+}
+// Receive waypoints for pause in stop_waypoints_array. Received periodically.
+void LaneSelectNode::callbackFromStopArray(const autoware_msgs::LaneArrayConstPtr& msg)
+{
+  if (!is_lane_array_subscribed_)
+  {
+    return;
+  }
+  tuple_vec_.resize(msg->lanes.size());
+  int current_point = std::get<1>(tuple_vec_.at(0));
+  for (uint32_t i = 0; i < msg->lanes.size(); i++)
+  {
+    auto t = std::make_tuple(msg->lanes.at(i), current_point, ChangeFlag::unknown);
+    tuple_vec_.at(i) = t;
+  }
+
+  if (lane_array_id_ != msg->id)
+  {
+    ROS_INFO("[LaneSelectNode::callbackFromStopArray] Lane_id changed, initializing. %d -> %d", lane_array_id_, msg->id);
+    is_new_lane_array_ = true;
+    current_lane_idx_ = -1;
+    right_lane_idx_ = -1;
+    left_lane_idx_ = -1;
+  }
+  lane_array_id_ = msg->id;
 }
 
 void LaneSelectNode::callbackFromPoseTwistStamped(const geometry_msgs::PoseStampedConstPtr& pose_msg,
