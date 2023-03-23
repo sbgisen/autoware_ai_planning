@@ -87,14 +87,19 @@ private:
   // Index of the closest waypoint in the current_waypoints_ Lane.
   // Not the same as the waypoint gid. This value can change suddenly if the
   // current_waypoints_ switches between base_waypoints_ and avoid_waypoints_.
+  State select_way_;
   int closest_waypoint_index_ = -1;
+  int avoid_waypoint_index_ = -1;
+  int avoid_start_index_ = 0;
+  int avoid_finish_index_ = 0;
+  int base_waypoint_index_ = -1;
+  int base_avoid_index_offset_ = 0;
 
-  // Index of the obstacle relative to closest_waypoint_index_.
+  // Index of the obstacle relative to current_waypoint_index_.
   int obstacle_waypoint_index_ = -1;
   nav_msgs::OccupancyGrid costmap_;
   autoware_msgs::Lane base_waypoints_;
   autoware_msgs::Lane avoid_waypoints_;
-  autoware_msgs::Lane current_waypoints_;
   geometry_msgs::PoseStamped current_pose_local_, current_pose_global_;
   geometry_msgs::PoseStamped goal_pose_local_, goal_pose_global_;
   geometry_msgs::TwistStamped current_velocity_;
@@ -117,11 +122,13 @@ private:
   // functions
   bool checkInitialized();
   bool planAvoidWaypoints(int& end_of_avoid_index);
-  void mergeAvoidWaypoints(const nav_msgs::Path& path, int& end_of_avoid_index);
+  void mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index,
+                           int& end_of_avoid_index);
   tf::Transform getTransform(const std::string& from, const std::string& to);
 
   // Find closest waypoint index within a search_size around the previous closest waypoint
-  void updateClosestWaypoint(const autoware_msgs::Lane& waypoints, const geometry_msgs::Pose& pose, const int& search_size);
+  int updateClosestWaypoint(const autoware_msgs::Lane& waypoints, const int previous_index,
+                            const geometry_msgs::Pose& pose, const int& search_size);
   // publish safety waypoints using a timer
   void publishWaypoints(const ros::TimerEvent& e);
 };
