@@ -90,10 +90,10 @@ private:
   State select_way_;
   int closest_waypoint_index_ = -1;
   int avoid_waypoint_index_ = -1;
-  int avoid_start_index_ = 0;
-  int avoid_finish_index_ = 0;
+  int avoid_start_index_ = -1;
+  int avoid_finish_index_ = -1;
   int base_waypoint_index_ = -1;
-  int base_avoid_index_offset_ = 0;
+  int base_finish_index_ = -1;
 
   // Index of the obstacle relative to current_waypoint_index_.
   int obstacle_waypoint_index_ = -1;

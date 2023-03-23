@@ -191,8 +191,7 @@ void AstarAvoid::run()
       if (avoid_waypoint_index_ >= avoid_finish_index_)
       {
         ROS_INFO("AVOIDING -> RELAYING, Reached goal");
-        base_waypoint_index_ = avoid_waypoint_index_ + base_avoid_index_offset_;
-        base_avoid_index_offset_ = 0;
+        base_waypoint_index_ = base_finish_index_;
         state_ = AstarAvoid::STATE::RELAYING;
         select_way_ = AstarAvoid::STATE::RELAYING;
       }
@@ -318,11 +317,10 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
     {
       pub.publish(astar_.getPath());
       avoid_start_index_ = base_waypoint_index_;
-      base_avoid_index_offset_ = 0;
       mergeAvoidWaypoints(astar_.getPath(), avoid_start_index_, goal_waypoint_index, end_of_avoid_index);
       if (avoid_waypoints_.waypoints.size() > 0)
       {
-        base_avoid_index_offset_ = goal_waypoint_index - end_of_avoid_index;
+        base_finish_index_ = goal_waypoint_index;
         avoid_waypoint_index_ = avoid_start_index_;
         ROS_INFO("Found GOAL at goal_waypoint_index = %d", goal_waypoint_index);
         astar_.reset();
@@ -330,6 +328,8 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
       }
       else
       {
+        base_finish_index_ = -1;
+        avoid_waypoint_index_ = -1;
         found_path = false;
       }
     }
@@ -426,9 +426,9 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
     // Update base_waypoint_index_ to match the amount of progress made by avoid_waypoint_index_.
     if (avoid_finish_index_ != avoid_start_index_)
     {
-      base_waypoint_index_ =
-          avoid_waypoint_index_ + (int)(base_avoid_index_offset_ * (avoid_waypoint_index_ - avoid_start_index_) /
-                                        (avoid_finish_index_ - avoid_start_index_));
+      base_waypoint_index_ = avoid_start_index_ + (int)((avoid_waypoint_index_ - avoid_start_index_) *
+                                                        (base_finish_index_ - avoid_start_index_) /
+                                                        (avoid_finish_index_ - avoid_start_index_));
     }
     else
     {
@@ -469,7 +469,6 @@ int AstarAvoid::updateClosestWaypoint(const autoware_msgs::Lane& waypoints, cons
     next_index = closest_waypoint_index_;
     base_waypoint_index_ = closest_waypoint_index_;
     avoid_waypoint_index_ = closest_waypoint_index_;
-    base_avoid_index_offset_ = 0;
   }
   else
   {
@@ -494,7 +493,6 @@ int AstarAvoid::updateClosestWaypoint(const autoware_msgs::Lane& waypoints, cons
       next_index = closest_waypoint_index_;
       base_waypoint_index_ = closest_waypoint_index_;
       avoid_waypoint_index_ = closest_waypoint_index_;
-      base_avoid_index_offset_ = 0;
     }
   }
   return next_index;
