@@ -328,8 +328,6 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
       }
       else
       {
-        base_finish_index_ = -1;
-        avoid_waypoint_index_ = -1;
         found_path = false;
       }
     }
