@@ -559,6 +559,7 @@ visualization_msgs::Marker LaneSelectNode::createClosestWaypointsMarker()
   marker.type = visualization_msgs::Marker::POINTS;
   marker.action = visualization_msgs::Marker::ADD;
   marker.scale.x = 0.5;
+  marker.scale.y = 0.5;
   marker.color = color_closest_wp;
 
   marker.points.reserve(tuple_vec_.size());
