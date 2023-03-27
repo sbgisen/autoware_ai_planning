@@ -626,11 +626,11 @@ void LaneSelectNode::publishVehicleLocation(const int32_t clst_wp, const int32_t
 // Initialize the entire waypoints by receiving traffic_waypoints_array. Receive only once at the beginning.
 void LaneSelectNode::callbackFromLaneArray(const autoware_msgs::LaneArrayConstPtr& msg)
 {
-  ROS_INFO("[LaneSelectNode::callbackFromLaneArray] Clearing lanes. lane_id = %d", msg->id);
+  ROS_INFO("[LaneSelectNode::callbackFromLaneArray] Initialize lanes. lane_id = %d", msg->id);
   tuple_vec_.clear();
   tuple_vec_.shrink_to_fit();
   tuple_vec_.reserve(msg->lanes.size());
-  for (const auto& el : msg->lanes)
+  for (const autoware_msgs::Lane& el : msg->lanes)
   {
     auto t = std::make_tuple(el, -1, ChangeFlag::unknown);
     tuple_vec_.push_back(t);
@@ -650,23 +650,39 @@ void LaneSelectNode::callbackFromStopArray(const autoware_msgs::LaneArrayConstPt
   {
     return;
   }
-  tuple_vec_.resize(msg->lanes.size());
-  int current_point = std::get<1>(tuple_vec_.at(0));
-  for (uint32_t i = 0; i < msg->lanes.size(); i++)
+  else if (lane_array_id_ != msg->id)
   {
-    auto t = std::make_tuple(msg->lanes.at(i), current_point, ChangeFlag::unknown);
-    tuple_vec_.at(i) = t;
-  }
-
-  if (lane_array_id_ != msg->id)
-  {
-    ROS_INFO("[LaneSelectNode::callbackFromStopArray] Lane_id changed, initializing. %d -> %d", lane_array_id_, msg->id);
-    is_new_lane_array_ = true;
+    ROS_WARN("[LaneSelectNode::callbackFromStopArray] Lane array changed. %d -> %d", lane_array_id_, msg->id);
+    tuple_vec_.clear();
+    tuple_vec_.shrink_to_fit();
+    tuple_vec_.reserve(msg->lanes.size());
+    for (const autoware_msgs::Lane& el : msg->lanes)
+    {
+      auto t = std::make_tuple(el, -1, ChangeFlag::unknown);
+      tuple_vec_.push_back(t);
+    }
+    lane_array_id_ = msg->id;
     current_lane_idx_ = -1;
     right_lane_idx_ = -1;
     left_lane_idx_ = -1;
+    is_new_lane_array_ = true;
+    return;
   }
-  lane_array_id_ = msg->id;
+  else
+  {
+    is_new_lane_array_ = true;
+    uint32_t lanes_size = std::min(tuple_vec_.size(), msg->lanes.size());
+    for (uint32_t i = 0; i < lanes_size; i++)
+    {
+      uint32_t waypoint_size =
+          std::min(std::get<0>(tuple_vec_.at(i)).waypoints.size(), msg->lanes.at(i).waypoints.size());
+      for (uint32_t j = 0; j < waypoint_size; j++)
+      {
+        std::get<0>(tuple_vec_.at(i)).waypoints.at(j).twist = msg->lanes.at(i).waypoints.at(j).twist;
+        std::get<0>(tuple_vec_.at(i)).waypoints.at(j).pose = msg->lanes.at(i).waypoints.at(j).pose;
+      }
+    }
+  }
 }
 
 void LaneSelectNode::callbackFromPoseTwistStamped(const geometry_msgs::PoseStampedConstPtr& pose_msg,
