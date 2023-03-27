@@ -648,11 +648,12 @@ void LaneSelectNode::callbackFromStopArray(const autoware_msgs::LaneArrayConstPt
 {
   if (!is_lane_array_subscribed_)
   {
+    ROS_WARN_THROTTLE(5.0, "[LaneSelectNode::callbackFromLaneArray] Waiting for traffic_waypoints_array");
     return;
   }
   else if (lane_array_id_ != msg->id)
   {
-    ROS_WARN("[LaneSelectNode::callbackFromStopArray] Lane array changed. %d -> %d", lane_array_id_, msg->id);
+    ROS_WARN("[LaneSelectNode::callbackFromStopArray] Lane id changed. %d -> %d", lane_array_id_, msg->id);
     tuple_vec_.clear();
     tuple_vec_.shrink_to_fit();
     tuple_vec_.reserve(msg->lanes.size());
