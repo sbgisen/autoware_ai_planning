@@ -108,8 +108,8 @@ int main(int argc, char **argv)
   n.param<bool>("/lane_stop/pub_waypoint_latch", pub_waypoint_latch, true);
   n.param<bool>("/lane_stop/manual_detection", config_manual_detection, true);
 
-  traffic_pub =
-      n.advertise<autoware_msgs::LaneArray>("stop_waypoints_array", pub_waypoint_queue_size, pub_waypoint_latch);
+  traffic_pub = n.advertise<autoware_msgs::LaneArray>("traffic_waypoints_array", pub_waypoint_queue_size,
+                pub_waypoint_latch);
 
   ros::Subscriber light_sub = n.subscribe("light_color", sub_light_queue_size, receive_auto_detection);
   ros::Subscriber light_managed_sub = n.subscribe("light_color_managed", sub_light_queue_size,
