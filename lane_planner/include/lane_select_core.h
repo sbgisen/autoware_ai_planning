@@ -77,7 +77,7 @@ private:
   ros::Timer timer_;
 
   // subscriber
-  ros::Subscriber sub1_, sub4_, sub5_, sub6_;
+  ros::Subscriber sub1_, sub5_, sub6_;
   message_filters::Subscriber<geometry_msgs::PoseStamped> sub2_;
   message_filters::Subscriber<geometry_msgs::TwistStamped> sub3_;
   using PoseTwistSyncPolicy = message_filters::sync_policies::ApproximateTime<geometry_msgs::PoseStamped, geometry_msgs::TwistStamped>;
@@ -121,7 +121,6 @@ private:
 
   // callbacks
   void callbackFromLaneArray(const autoware_msgs::LaneArrayConstPtr& msg);
-  void callbackFromStopArray(const autoware_msgs::LaneArrayConstPtr& msg);
   void callbackFromState(const std_msgs::StringConstPtr& msg);
   void callbackFromDecisionMakerState(const std_msgs::StringConstPtr& msg);
   void callbackFromConfig(const autoware_config_msgs::ConfigLaneSelectConstPtr& msg);
