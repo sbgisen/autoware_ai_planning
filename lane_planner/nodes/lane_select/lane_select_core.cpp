@@ -646,6 +646,9 @@ void LaneSelectNode::callbackFromLaneArray(const autoware_msgs::LaneArrayConstPt
   }
   else
   {
+    // If the lane_array_id has not changed, overwrite the position and speed.
+    // The number of lanes and waypoints should not change, but to avoid exceptions, the for loop is used to assign to
+    // the one with the smaller number.
     is_new_lane_array_ = true;
     uint32_t lanes_size = std::min(tuple_vec_.size(), msg->lanes.size());
     for (uint32_t i = 0; i < lanes_size; i++)
