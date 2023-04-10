@@ -129,12 +129,14 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     publishClosestWaypoint(-1);
     publishVehicleLocation(-1, lane_array_id_);
     resetLaneIdx();
+    ROS_INFO_THROTTLE(2, "[LaneSelectNode::processing] The closest_waypoint could not be found");
     return;
   }
 
   if (current_lane_idx_ == -1)
   {
     // Note: Only call it after calling updateClosestWaypointNumberForEachLane()
+    ROS_INFO_THROTTLE(2, "[LaneSelectNode::processing] current_lane_idx_ == -1. Search current lane.");
     findCurrentLane();
   }
 
