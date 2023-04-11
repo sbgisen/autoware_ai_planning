@@ -129,12 +129,14 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     publishClosestWaypoint(-1);
     publishVehicleLocation(-1, lane_array_id_);
     resetLaneIdx();
+    ROS_INFO_THROTTLE(2, "[LaneSelectNode::processing] The closest_waypoint could not be found");
     return;
   }
 
   if (current_lane_idx_ == -1)
   {
     // Note: Only call it after calling updateClosestWaypointNumberForEachLane()
+    ROS_INFO_THROTTLE(2, "[LaneSelectNode::processing] current_lane_idx_ == -1. Search current lane.");
     findCurrentLane();
   }
 
@@ -650,7 +652,7 @@ void LaneSelectNode::callbackFromLaneArray(const autoware_msgs::LaneArrayConstPt
     // The number of lanes and waypoints should not change, but to avoid exceptions, the for loop is used to assign to
     // the one with the smaller number.
     uint32_t lanes_size = std::min(tuple_vec_.size(), msg->lanes.size());
-    if (current_lane_idx_ > lanes_size)
+    if (current_lane_idx_ > static_cast<int32_t>(lanes_size))
     {
       lane_array_id_ = -1;
       current_lane_idx_ = -1;

@@ -51,8 +51,9 @@ void select_current_lane(const autoware_msgs::TrafficLight& msg)
     return;
   }
 
-  if (current->lanes.empty()) {
-    ROS_ERROR_STREAM("empty lanes");
+  if (current->lanes.empty())
+  {
+    ROS_INFO_THROTTLE(5, "[lane_stop] Waiting for lanes");
     return;
   }
 
