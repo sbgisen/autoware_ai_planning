@@ -76,7 +76,7 @@ double VelocitySetPath::calcChangedVelocity(const double& current_vel, const dou
 
 void VelocitySetPath::changeWaypointsForDeceleration(double deceleration, int closest_waypoint, int obstacle_waypoint)
 {
-  int extra = 4; // for safety
+  int extra = 4;  // for safety
 
   // decelerate with constant deceleration
   for (int index = obstacle_waypoint + extra; index >= closest_waypoint; index--)
@@ -87,14 +87,13 @@ void VelocitySetPath::changeWaypointsForDeceleration(double deceleration, int cl
     // v = sqrt( (v0)^2 + 2ax )
     // Keep the car at decelerate_vel_min_ when approaching the obstacles.
     // without decelerate_vel_min_ term, changed_vel becomes zero if index == obstacle_waypoint.
-    std::array<int, 2> range = {index, obstacle_waypoint};
+    std::array<int, 2> range = { index, obstacle_waypoint + extra };
     double changed_vel = calcChangedVelocity(decelerate_vel_min_, deceleration, range);
 
     double prev_vel = original_waypoints_.waypoints[index].twist.twist.linear.x;
     const int sgn = (prev_vel < 0) ? -1 : 1;
     updated_waypoints_.waypoints[index].twist.twist.linear.x = sgn * std::min(std::abs(prev_vel), changed_vel);
   }
-
 }
 
 void VelocitySetPath::avoidSuddenAcceleration(double deceleration, int closest_waypoint)
@@ -193,7 +192,8 @@ double VelocitySetPath::calcInterval(const int begin, const int end) const
   // check index
   if (begin < 0 || begin >= getPrevWaypointsSize() || end < 0 || end >= getPrevWaypointsSize() || begin > end)
   {
-    ROS_WARN_THROTTLE(1, "Invalid input index range");
+    ROS_WARN("Invalid input index range: begin = %d, end = %d, PrevWaypointsSize = %d", begin, end,
+             getPrevWaypointsSize());
     return 0.0;
   }
 
