@@ -88,6 +88,7 @@ private:
   double path_length_limit_;        // The path length must not be more than this value [m]
   bool enable_path_angle_limit_;    // Ignore avoidance paths that change direction more than path_angle_limit_
   double path_angle_limit_;         // The orientation must not change more than this value [rad]
+  bool prohibit_circulation_;       // Ignore path that make more than one turn
 
   // costmap configs
   int obstacle_threshold_;            // obstacle threshold on grid [-]
