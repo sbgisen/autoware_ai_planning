@@ -44,6 +44,7 @@ AstarSearch::AstarSearch()
   private_nh_.param<bool>("enable_path_angle_limit", enable_path_angle_limit_, false);
   private_nh_.param<double>("path_angle_limit", path_angle_limit_, 3.0 * M_PI);
   private_nh_.param<bool>("prohibit_circulation", prohibit_circulation_, false);
+  private_nh_.param<double>("circulation_angle_limit", circulation_angle_limit_, 1.75 * M_PI);
 
   // costmap configs
   private_nh_.param<int>("obstacle_threshold", obstacle_threshold_, 100);
@@ -426,7 +427,7 @@ bool AstarSearch::search()
       // Ignore invalit nodes
       if ((enable_path_angle_limit_ && move_angle > path_angle_limit_) ||
           (enable_path_length_limit_ && move_distance > path_length_limit_) ||
-          (prohibit_circulation_ && fabs(next_theta) > 2.0 * M_PI))
+          (prohibit_circulation_ && fabs(next_theta) > circulation_angle_limit_))
       {
         continue;
       }
