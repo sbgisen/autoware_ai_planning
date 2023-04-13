@@ -39,6 +39,8 @@ AstarSearch::AstarSearch()
   private_nh_.param<double>("reverse_weight", reverse_weight_, 2.00);
   private_nh_.param<double>("lateral_goal_range", lateral_goal_range_, 0.5);
   private_nh_.param<double>("longitudinal_goal_range", longitudinal_goal_range_, 2.0);
+  private_nh_.param<bool>("enable_path_length_limit", enable_path_length_limit_, false);
+  private_nh_.param<double>("path_length_limit", path_length_limit_, 20.0);
 
   // costmap configs
   private_nh_.param<int>("obstacle_threshold", obstacle_threshold_, 100);
@@ -413,6 +415,12 @@ bool AstarSearch::search()
       {
         next_hc = calcDistance(next_x, next_y, goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) *
                   distance_heuristic_weight_;
+      }
+
+      // Ignore invalit nodes
+      if (enable_path_length_limit_ && move_distance > path_length_limit_)
+      {
+        continue;
       }
 
       // NONE
