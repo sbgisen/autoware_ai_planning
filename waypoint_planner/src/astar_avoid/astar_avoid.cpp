@@ -16,9 +16,7 @@
 
 #include "waypoint_planner/astar_avoid/astar_avoid.h"
 
-AstarAvoid::AstarAvoid()
-  : nh_()
-  , private_nh_("~")
+AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
 {
   private_nh_.param<int>("safety_waypoints_size", safety_waypoints_size_, 100);
   private_nh_.param<double>("update_rate", update_rate_, 10.0);
@@ -29,6 +27,7 @@ AstarAvoid::AstarAvoid()
   private_nh_.param<double>("replan_interval", replan_interval_, 2.0);
   private_nh_.param<int>("search_waypoints_size", search_waypoints_size_, 50);
   private_nh_.param<int>("search_waypoints_delta", search_waypoints_delta_, 2);
+  private_nh_.param<int>("search_waypoints_min", search_waypoints_min_, 0);
   private_nh_.param<int>("closest_search_size", closest_search_size_, 30);
   private_nh_.param<int>("stopline_ahead_num", stopline_ahead_num_, 1);
 
@@ -281,7 +280,7 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
     // Note: obstacle_waypoint_index_ is supposed to be relative to base_waypoint_index_.
     //       However, obstacle_waypoint_index_ is published by velocity_set node. The astar_avoid and velocity_set
     //       should be combined together to prevent this kind of inconsistency.
-    int goal_waypoint_index = base_waypoint_index_ + obstacle_waypoint_index_ + i;
+    int goal_waypoint_index = base_waypoint_index_ + obstacle_waypoint_index_ + search_waypoints_min_ + i;
     if (goal_waypoint_index >= static_cast<int>(base_waypoints_.waypoints.size()))
     {
       break;
