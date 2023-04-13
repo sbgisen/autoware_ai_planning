@@ -39,6 +39,8 @@ AstarSearch::AstarSearch()
   private_nh_.param<double>("reverse_weight", reverse_weight_, 2.00);
   private_nh_.param<double>("lateral_goal_range", lateral_goal_range_, 0.5);
   private_nh_.param<double>("longitudinal_goal_range", longitudinal_goal_range_, 2.0);
+  private_nh_.param<bool>("enable_path_angle_limit", enable_path_angle_limit_, false);
+  private_nh_.param<double>("path_angle_limit", path_angle_limit_, 2.0 * M_PI);
 
   // costmap configs
   private_nh_.param<int>("obstacle_threshold", obstacle_threshold_, 100);
@@ -338,6 +340,7 @@ bool AstarSearch::search()
 
   // Start A* search
   // If the openlist is empty, search failed
+  double rotation = 0, previous_theta = 0;
   while (!openlist_.empty())
   {
     // Check time and terminate if the search reaches the time limit
@@ -413,6 +416,17 @@ bool AstarSearch::search()
       {
         next_hc = calcDistance(next_x, next_y, goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) *
                   distance_heuristic_weight_;
+      }
+      if (enable_path_angle_limit_)
+      {
+        double theta_diff = modifyTheta(next_theta - previous_theta);
+        previous_theta = next_theta;
+        rotation += theta_diff;
+        if (fabs(rotation) > path_angle_limit_)
+        {
+          ROS_DEBUG("angle limit exceeded. rotation = %f, path_angle_limit_ = %f,", rotation, path_angle_limit_);
+          return false;
+        }
       }
 
       // NONE

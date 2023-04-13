@@ -72,10 +72,10 @@ private:
   double time_limit_;             // planning time limit [msec]
 
   // robot configs (TODO: obtain from vehicle_info)
-  double robot_length_;           // X [m]
-  double robot_width_;            // Y [m]
-  double robot_base2back_;        // base_link to rear [m]
-  double minimum_turning_radius_; // [m]]
+  double robot_length_;            // X [m]
+  double robot_width_;             // Y [m]
+  double robot_base2back_;         // base_link to rear [m]
+  double minimum_turning_radius_;  // [m]]
 
   // search configs
   int theta_size_;                  // descritized angle table size [-]
@@ -84,6 +84,8 @@ private:
   double lateral_goal_range_;       // reaching threshold, lateral error [m]
   double longitudinal_goal_range_;  // reaching threshold, longitudinal error [m]
   double angle_goal_range_;         // reaching threshold, angle error [deg]
+  bool enable_path_angle_limit_;  // Ignore avoidance paths that change direction more significantly than path_angle_limit_
+  double path_angle_limit_;       // The orientation must not change more than this value [rad]
 
   // costmap configs
   int obstacle_threshold_;            // obstacle threshold on grid [-]
