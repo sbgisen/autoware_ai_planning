@@ -86,6 +86,8 @@ private:
   double angle_goal_range_;         // reaching threshold, angle error [deg]
   bool enable_path_length_limit_;   // Ignore avoidance paths that moves more than path_length_limit_
   double path_length_limit_;        // The path length must not be more than this value [m]
+  bool enable_path_angle_limit_;    // Ignore avoidance paths that change direction more than path_angle_limit_
+  double path_angle_limit_;         // The orientation must not change more than this value [rad]
 
   // costmap configs
   int obstacle_threshold_;            // obstacle threshold on grid [-]
