@@ -376,7 +376,7 @@ bool AstarSearch::search()
       // Next state
       double next_x = current_an->x + state.shift_x;
       double next_y = current_an->y + state.shift_y;
-      double next_theta = current_an->theta + state.rotation;
+      double next_theta = modifyTheta(current_an->theta + state.rotation);
       double move_cost = state.step;
       double move_distance = current_an->move_distance + state.step;
       double move_angle = current_an->move_angle + fabs(state.rotation);
