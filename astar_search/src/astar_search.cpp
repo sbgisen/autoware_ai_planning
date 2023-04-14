@@ -365,8 +365,7 @@ bool AstarSearch::search()
     if (isGoal(current_an->x, current_an->y, current_an->theta))
     {
       ROS_DEBUG("Search time: %lf [msec]", (now - begin).toSec() * 1000.0);
-      ROS_DEBUG("move_distance = %lf, move_angle = %lf, theta = %lf", current_an->move_distance, current_an->move_angle,
-                current_an->theta);
+      ROS_DEBUG("move_distance = %lf, move_angle = %lf", current_an->move_distance, current_an->move_angle);
       setPath(top_sn);
       return true;
     }
