@@ -34,6 +34,7 @@ struct AstarNode
   double gc = 0;                 // Actual cost
   double hc = 0;                 // heuristic cost
   double move_distance = 0;      // actual move distance
+  double move_angle = 0;         // actual move angle (nomalized)
   bool back;                     // true if the current direction of the vehicle is back
   AstarNode* parent = NULL;      // parent node
 };

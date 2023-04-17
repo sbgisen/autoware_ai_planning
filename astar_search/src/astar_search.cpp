@@ -39,6 +39,10 @@ AstarSearch::AstarSearch()
   private_nh_.param<double>("reverse_weight", reverse_weight_, 2.00);
   private_nh_.param<double>("lateral_goal_range", lateral_goal_range_, 0.5);
   private_nh_.param<double>("longitudinal_goal_range", longitudinal_goal_range_, 2.0);
+  private_nh_.param<bool>("enable_path_length_limit", enable_path_length_limit_, false);
+  private_nh_.param<double>("path_length_limit", path_length_limit_, 20.0);
+  private_nh_.param<bool>("enable_path_angle_limit", enable_path_angle_limit_, false);
+  private_nh_.param<double>("path_angle_limit", path_angle_limit_, 3.0 * M_PI);
 
   // costmap configs
   private_nh_.param<int>("obstacle_threshold", obstacle_threshold_, 100);
@@ -361,6 +365,7 @@ bool AstarSearch::search()
     if (isGoal(current_an->x, current_an->y, current_an->theta))
     {
       ROS_DEBUG("Search time: %lf [msec]", (now - begin).toSec() * 1000.0);
+      ROS_DEBUG("move_distance = %lf, move_angle = %lf", current_an->move_distance, current_an->move_angle);
       setPath(top_sn);
       return true;
     }
@@ -374,6 +379,7 @@ bool AstarSearch::search()
       double next_theta = modifyTheta(current_an->theta + state.rotation);
       double move_cost = state.step;
       double move_distance = current_an->move_distance + state.step;
+      double move_angle = current_an->move_angle + fabs(state.rotation);
 
       // Increase reverse cost
       if (state.back != current_an->back)
@@ -415,6 +421,13 @@ bool AstarSearch::search()
                   distance_heuristic_weight_;
       }
 
+      // Ignore invalit nodes
+      if ((enable_path_angle_limit_ && move_angle > path_angle_limit_) ||
+          (enable_path_length_limit_ && move_distance > path_length_limit_))
+      {
+        continue;
+      }
+
       // NONE
       if (next_an->status == STATUS::NONE)
       {
@@ -425,6 +438,7 @@ bool AstarSearch::search()
         next_an->gc = next_gc;
         next_an->hc = next_hc;
         next_an->move_distance = move_distance;
+        next_an->move_angle = move_angle;
         next_an->back = state.back;
         next_an->parent = current_an;
         next_sn.cost = next_an->gc + next_an->hc;
@@ -444,6 +458,7 @@ bool AstarSearch::search()
           next_an->gc = next_gc;
           next_an->hc = next_hc;  // already calculated ?
           next_an->move_distance = move_distance;
+          next_an->move_angle = move_angle;
           next_an->back = state.back;
           next_an->parent = current_an;
           next_sn.cost = next_an->gc + next_an->hc;
