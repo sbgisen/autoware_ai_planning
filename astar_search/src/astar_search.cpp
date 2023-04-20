@@ -385,7 +385,7 @@ bool AstarSearch::search()
       if (state.back != current_an->back)
         move_cost *= reverse_weight_;
       // Increase curve cost
-      double curve_cost_scale = 1.0 + (fabs(state.rotation) * (curve_weight_ - 1.0));
+      double curve_cost_scale = std::max(0.0, 1.0 + (fabs(state.rotation) * (curve_weight_ - 1.0)));
       move_cost *= curve_cost_scale;
 
       // Calculate index of the next state
