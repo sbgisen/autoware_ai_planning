@@ -48,7 +48,8 @@
 // for smaller maps - faster to just find nearest lanelet for each waypoint.
 #define LANE_RULES_USE_ROUTING_GRAPH false
 
-static double g_config_acceleration = 1;            // m/s^2
+static double g_config_ahead_deceleration = 1;            // m/s^2
+static double g_config_behind_acceleration = 1;
 static double g_config_stopline_search_radius = 1;  // meter
 static int g_config_number_of_zeros_ahead = 0;
 static int g_config_number_of_zeros_behind = 0;
@@ -276,8 +277,8 @@ autoware_msgs::Lane apply_acceleration(const autoware_msgs::Lane& lane, double a
 // apply deceleration before stopline and acceleration after stopline
 // // same as lane_rule.cpp
 autoware_msgs::Lane apply_stopline_acceleration(const autoware_msgs::Lane& lane,
-                                                const std::vector<size_t>& stopline_indexes, double acceleration,
-                                                size_t ahead_cnt, size_t behind_cnt)
+                                                const std::vector<size_t>& stopline_indexes, double deceleration,
+                                                double acceleration, size_t ahead_cnt, size_t behind_cnt)
 {
   autoware_msgs::Lane l = lane;
   if (stopline_indexes.empty())
@@ -295,7 +296,7 @@ autoware_msgs::Lane apply_stopline_acceleration(const autoware_msgs::Lane& lane,
   std::reverse(reverse_indexes.begin(), reverse_indexes.end());
 
   for (const size_t i : reverse_indexes)
-    l = apply_acceleration(l, acceleration, i, ahead_cnt + 1, 0);
+    l = apply_acceleration(l, deceleration, i, ahead_cnt + 1, 0);
 
   // undo reverse
   std::reverse(l.waypoints.begin(), l.waypoints.end());
@@ -381,8 +382,9 @@ void create_waypoint(const autoware_msgs::LaneArray& msg)
     green_waypoint.lanes.push_back(waypoint_lane);
 
     // apply acceleration to waypoint velocities to consider stoplines
-    waypoint_lane = apply_stopline_acceleration(waypoint_lane, waypoint_stopline_indexes, g_config_acceleration,
-                                                g_config_number_of_zeros_ahead, g_config_number_of_zeros_behind);
+    waypoint_lane = apply_stopline_acceleration(waypoint_lane, waypoint_stopline_indexes, g_config_ahead_deceleration,
+                                                g_config_ahead_deceleration, g_config_number_of_zeros_ahead,
+                                                g_config_number_of_zeros_behind);
 
     red_waypoint.lanes.push_back(waypoint_lane);
   }
@@ -412,7 +414,8 @@ void binMapCallback(const autoware_lanelet2_msgs::MapBin& msg)
 // callback for config topic
 void config_parameter(const autoware_config_msgs::ConfigLaneRule& msg)
 {
-  g_config_acceleration = msg.acceleration;
+  g_config_ahead_deceleration = msg.acceleration;
+  g_config_behind_acceleration = msg.acceleration;
   g_config_stopline_search_radius = msg.stopline_search_radius;
   g_config_number_of_zeros_ahead = msg.number_of_zeros_ahead;
   g_config_number_of_zeros_behind = msg.number_of_zeros_behind;
@@ -451,7 +454,8 @@ int main(int argc, char** argv)
   pnh.param<bool>("pub_waypoint_latch", pub_waypoint_latch, true);
 
   pnh.param<std::string>("frame_id", g_frame_id, "map");
-  pnh.param<double>("acceleration", g_config_acceleration, 1);
+  pnh.param<double>("ahead_deceleration", g_config_ahead_deceleration, 1);
+  pnh.param<double>("behind_acceleration", g_config_behind_acceleration, 1);
   pnh.param<int>("number_of_smoothing_count", g_config_number_of_smoothing_count, 0);
   pnh.param<int>("number_of_zeros_ahead", g_config_number_of_zeros_ahead, 0);
   pnh.param<int>("number_of_zeros_behind", g_config_number_of_zeros_behind, 0);
