@@ -87,7 +87,7 @@ void obstacleColorByKind(const EControl kind, std_msgs::ColorRGBA* color, const 
 void displayObstacle(const EControl& kind, const ObstaclePoints& obstacle_points, const ros::Publisher& obstacle_pub)
 {
   visualization_msgs::Marker marker;
-  marker.header.frame_id = "/map";
+  marker.header.frame_id = "map";
   marker.header.stamp = ros::Time();
   marker.ns = "my_namespace";
   marker.id = 0;
@@ -426,7 +426,7 @@ void displayDetectionRange(const autoware_msgs::Lane& lane, const lanelet::Const
   visualization_msgs::Marker waypoint_marker_stop;
   visualization_msgs::Marker waypoint_marker_decelerate;
   visualization_msgs::Marker stop_line;
-  crosswalk_marker.header.frame_id = "/map";
+  crosswalk_marker.header.frame_id = "map";
   crosswalk_marker.header.stamp = ros::Time();
   crosswalk_marker.id = 0;
   crosswalk_marker.type = visualization_msgs::Marker::SPHERE_LIST;
