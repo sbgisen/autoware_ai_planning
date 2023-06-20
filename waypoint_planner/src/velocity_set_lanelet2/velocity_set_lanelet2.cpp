@@ -625,6 +625,51 @@ void binMapCallback(const autoware_lanelet2_msgs::MapBin& msg)
   ROS_INFO("velocity_set_lanelet2: lanelet map loaded\n");
 }
 
+// fill waypoints from the current position to the nearest point
+int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane& lane, const geometry_msgs::PoseStamped& pose)
+{
+  autoware_msgs::Waypoint next_waypoint = lane.waypoints.at(0);
+  autoware_msgs::Waypoint new_waypoint;
+  autoware_msgs::Lane lane_update;
+  int num_waypoints;
+  new_waypoint.pose.header = lane.header;
+  new_waypoint.twist.header = lane.header;
+  new_waypoint.pose.pose.orientation = next_waypoint.pose.pose.orientation;
+  new_waypoint.twist.twist.linear.x = next_waypoint.twist.twist.linear.x;
+  lane_update.lane_id = lane.lane_id;
+  lane_update.header = lane.header;
+
+  double distance = sqrt(pow(next_waypoint.pose.pose.position.x - pose.pose.position.x, 2) +
+                         pow(next_waypoint.pose.pose.position.y - pose.pose.position.y, 2) +
+                         pow(next_waypoint.pose.pose.position.z - pose.pose.position.z, 2));
+
+  if (distance < 0.2)
+    return 0;
+
+  double distance_per_waypoint = 0.1;
+  num_waypoints = static_cast<int>(distance / distance_per_waypoint) + 1;
+
+  for (int i = 1; i < num_waypoints - 1; i++)
+  {
+    double ratio = static_cast<double>(i) / num_waypoints;
+    new_waypoint.pose.pose.position.x =
+        pose.pose.position.x * (1 - ratio) + next_waypoint.pose.pose.position.x * ratio;
+    new_waypoint.pose.pose.position.y =
+        pose.pose.position.y * (1 - ratio) + next_waypoint.pose.pose.position.y * ratio;
+    new_waypoint.pose.pose.position.z =
+        pose.pose.position.z * (1 - ratio) + next_waypoint.pose.pose.position.z * ratio;
+
+    lane_update.waypoints.push_back(new_waypoint);
+  }
+
+  for (const autoware_msgs::Waypoint& w : lane.waypoints)
+    lane_update.waypoints.push_back(w);
+
+  vs_path.setPrevWaypoints(lane_update);
+  vs_path.setNewWaypoints(lane_update);
+  return num_waypoints - 2;
+}
+
 int main(int argc, char** argv)
 {
   g_loaded_lanelet_map = false;
@@ -707,6 +752,8 @@ int main(int argc, char** argv)
       continue;
     }
 
+    int num_filled_waypoints = fillWaypointsNearestArea(vs_path, vs_path.getPrevWaypoints(), vs_info.getControlPose());
+
     int detection_waypoint = -1;
     lanelet::ConstLanelets closest_crosswalks;
     if (use_crosswalk_detection)
@@ -734,13 +781,13 @@ int main(int argc, char** argv)
     std_msgs::Int32 stopline_waypoint_index;
     if (detection_result == EControl::STOP)
     {
-      obstacle_waypoint_index.data = obstacle_waypoint;
+      obstacle_waypoint_index.data = obstacle_waypoint + num_filled_waypoints;
       stopline_waypoint_index.data = -1;
     }
     else if (detection_result == EControl::STOPLINE)
     {
       obstacle_waypoint_index.data = -1;
-      stopline_waypoint_index.data = obstacle_waypoint;
+      stopline_waypoint_index.data = obstacle_waypoint + num_filled_waypoints;
     }
     else
     {
