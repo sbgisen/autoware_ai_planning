@@ -626,7 +626,7 @@ void binMapCallback(const autoware_lanelet2_msgs::MapBin& msg)
 }
 
 // fill waypoints from the current position to the nearest point
-int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane& lane, const geometry_msgs::PoseStamped& pose)
+int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane& lane, const geometry_msgs::PoseStamped& pose, const double distance_per_waypoint)
 {
   autoware_msgs::Waypoint next_waypoint = lane.waypoints.at(0);
   autoware_msgs::Waypoint new_waypoint;
@@ -646,7 +646,6 @@ int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane
   if (distance < 0.2)
     return 0;
 
-  double distance_per_waypoint = 0.1;
   num_waypoints = static_cast<int>(distance / distance_per_waypoint) + 1;
 
   for (int i = 1; i < num_waypoints - 1; i++)
@@ -686,6 +685,7 @@ int main(int argc, char** argv)
   std::string points_topic;
   int deceleration_search_distance;
   int stop_search_distance;
+  double fill_waypoints_interval;
 
   private_rosnode.param<bool>("use_crosswalk_detection", use_crosswalk_detection, true);
   private_rosnode.param<bool>("enable_multiple_crosswalk_detection", enable_multiple_crosswalk_detection, true);
@@ -693,6 +693,7 @@ int main(int argc, char** argv)
   private_rosnode.param<std::string>("points_topic", points_topic, "points_lanes");
   private_rosnode.param<int>("deceleration_search_distance", deceleration_search_distance, 30);
   private_rosnode.param<int>("stop_search_distance", stop_search_distance, 60);
+  private_rosnode.param<double>("fill_waypoints_interval", fill_waypoints_interval, 0.1);
 
   VelocitySetPath vs_path;
   VelocitySetInfo vs_info;
@@ -752,7 +753,7 @@ int main(int argc, char** argv)
       continue;
     }
 
-    int num_filled_waypoints = fillWaypointsNearestArea(vs_path, vs_path.getPrevWaypoints(), vs_info.getControlPose());
+    int num_filled_waypoints = fillWaypointsNearestArea(vs_path, vs_path.getPrevWaypoints(), vs_info.getControlPose(), fill_waypoints_interval);
 
     int detection_waypoint = -1;
     lanelet::ConstLanelets closest_crosswalks;
