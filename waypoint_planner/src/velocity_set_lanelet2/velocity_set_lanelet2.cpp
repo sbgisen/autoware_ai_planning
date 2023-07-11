@@ -631,7 +631,6 @@ int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane
   autoware_msgs::Waypoint next_waypoint = lane.waypoints.at(0);
   autoware_msgs::Waypoint new_waypoint;
   autoware_msgs::Lane lane_update;
-  int num_waypoints;
   new_waypoint.pose.header = lane.header;
   new_waypoint.twist.header = lane.header;
   new_waypoint.pose.pose.orientation = next_waypoint.pose.pose.orientation;
@@ -639,34 +638,26 @@ int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane
   lane_update.lane_id = lane.lane_id;
   lane_update.header = lane.header;
 
-  double distance = sqrt(pow(next_waypoint.pose.pose.position.x - pose.pose.position.x, 2) +
-                         pow(next_waypoint.pose.pose.position.y - pose.pose.position.y, 2) +
-                         pow(next_waypoint.pose.pose.position.z - pose.pose.position.z, 2));
+  double dx = next_waypoint.pose.pose.position.x - pose.pose.position.x;
+  double dy = next_waypoint.pose.pose.position.y - pose.pose.position.y;
+  double dz = next_waypoint.pose.pose.position.z - pose.pose.position.z;
+  double distance = sqrt(pow(dx, 2) + pow(dy, 2) + pow(dz, 2));
+  double cumulative_distance = distance_per_waypoint;
 
-  if (distance < 0.2)
-    return 0;
-
-  num_waypoints = static_cast<int>(distance / distance_per_waypoint) + 1;
-
-  for (int i = 1; i < num_waypoints - 1; i++)
+  while (cumulative_distance < distance)
   {
-    double ratio = static_cast<double>(i) / num_waypoints;
-    new_waypoint.pose.pose.position.x =
-        pose.pose.position.x * (1 - ratio) + next_waypoint.pose.pose.position.x * ratio;
-    new_waypoint.pose.pose.position.y =
-        pose.pose.position.y * (1 - ratio) + next_waypoint.pose.pose.position.y * ratio;
-    new_waypoint.pose.pose.position.z =
-        pose.pose.position.z * (1 - ratio) + next_waypoint.pose.pose.position.z * ratio;
-
+    new_waypoint.pose.pose.position.x = pose.pose.position.x + dx / distance * cumulative_distance;
+    new_waypoint.pose.pose.position.y = pose.pose.position.y + dy / distance * cumulative_distance;
+    new_waypoint.pose.pose.position.z = pose.pose.position.z + dz / distance * cumulative_distance;
     lane_update.waypoints.push_back(new_waypoint);
+    cumulative_distance += distance_per_waypoint;
   }
 
-  for (const autoware_msgs::Waypoint& w : lane.waypoints)
-    lane_update.waypoints.push_back(w);
+  lane_update.waypoints.insert(lane_update.waypoints.end(), lane.waypoints.begin(), lane.waypoints.end());
 
   vs_path.setPrevWaypoints(lane_update);
   vs_path.setNewWaypoints(lane_update);
-  return num_waypoints - 2;
+  return lane_update.waypoints.size() - lane.waypoints.size();
 }
 
 int main(int argc, char** argv)
