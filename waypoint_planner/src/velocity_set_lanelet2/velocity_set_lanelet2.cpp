@@ -650,9 +650,10 @@ int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane
     new_waypoint.pose.pose.position.y = next_waypoint.pose.pose.position.y + dy / distance * cumulative_distance;
     new_waypoint.pose.pose.position.z = next_waypoint.pose.pose.position.z + dz / distance * cumulative_distance;
     lane_update.waypoints.push_back(new_waypoint);
-    std::reverse(lane_update.waypoints.begin(), lane_update.waypoints.end());
     cumulative_distance += distance_per_waypoint;
   }
+
+  std::reverse(lane_update.waypoints.begin(), lane_update.waypoints.end());
 
   lane_update.waypoints.insert(lane_update.waypoints.end(), lane.waypoints.begin(), lane.waypoints.end());
 
