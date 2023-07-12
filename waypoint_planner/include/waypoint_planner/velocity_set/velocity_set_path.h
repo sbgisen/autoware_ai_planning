@@ -47,6 +47,8 @@ class VelocitySetPath
   void setTemporalWaypoints(int temporal_waypoints_size, int closest_waypoint, geometry_msgs::PoseStamped control_pose);
   void initializeNewWaypoints();
   void resetFlag();
+  void setPrevWaypoints(const autoware_msgs::Lane& lane);
+  void setNewWaypoints(const autoware_msgs::Lane& lane);
 
   // ROS Callbacks
   void waypointsCallback(const autoware_msgs::LaneConstPtr& msg);

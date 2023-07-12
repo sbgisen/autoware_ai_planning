@@ -625,6 +625,46 @@ void binMapCallback(const autoware_lanelet2_msgs::MapBin& msg)
   ROS_INFO("velocity_set_lanelet2: lanelet map loaded\n");
 }
 
+// fill waypoints from the current position to the nearest point
+int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane& lane, const geometry_msgs::PoseStamped& pose, const double distance_per_waypoint)
+{
+  if(distance_per_waypoint <= 0)
+    return 0;
+
+  autoware_msgs::Waypoint next_waypoint = lane.waypoints.at(0);
+  autoware_msgs::Waypoint new_waypoint;
+  autoware_msgs::Lane lane_update;
+  new_waypoint.pose.header = lane.header;
+  new_waypoint.twist.header = lane.header;
+  new_waypoint.pose.pose.orientation = next_waypoint.pose.pose.orientation;
+  new_waypoint.twist.twist.linear.x = next_waypoint.twist.twist.linear.x;
+  lane_update.lane_id = lane.lane_id;
+  lane_update.header = lane.header;
+
+  double dx = pose.pose.position.x - next_waypoint.pose.pose.position.x;
+  double dy = pose.pose.position.y - next_waypoint.pose.pose.position.y;
+  double dz = pose.pose.position.z - next_waypoint.pose.pose.position.z;
+  double distance = sqrt(pow(dx, 2) + pow(dy, 2) + pow(dz, 2));
+  double cumulative_distance = distance_per_waypoint;
+
+  while (cumulative_distance < distance)
+  {
+    new_waypoint.pose.pose.position.x = next_waypoint.pose.pose.position.x + dx / distance * cumulative_distance;
+    new_waypoint.pose.pose.position.y = next_waypoint.pose.pose.position.y + dy / distance * cumulative_distance;
+    new_waypoint.pose.pose.position.z = next_waypoint.pose.pose.position.z + dz / distance * cumulative_distance;
+    lane_update.waypoints.push_back(new_waypoint);
+    cumulative_distance += distance_per_waypoint;
+  }
+
+  std::reverse(lane_update.waypoints.begin(), lane_update.waypoints.end());
+
+  lane_update.waypoints.insert(lane_update.waypoints.end(), lane.waypoints.begin(), lane.waypoints.end());
+
+  vs_path.setPrevWaypoints(lane_update);
+  vs_path.setNewWaypoints(lane_update);
+  return lane_update.waypoints.size() - lane.waypoints.size();
+}
+
 int main(int argc, char** argv)
 {
   g_loaded_lanelet_map = false;
@@ -641,6 +681,7 @@ int main(int argc, char** argv)
   std::string points_topic;
   int deceleration_search_distance;
   int stop_search_distance;
+  double fill_waypoints_interval;
 
   private_rosnode.param<bool>("use_crosswalk_detection", use_crosswalk_detection, true);
   private_rosnode.param<bool>("enable_multiple_crosswalk_detection", enable_multiple_crosswalk_detection, true);
@@ -648,6 +689,7 @@ int main(int argc, char** argv)
   private_rosnode.param<std::string>("points_topic", points_topic, "points_lanes");
   private_rosnode.param<int>("deceleration_search_distance", deceleration_search_distance, 30);
   private_rosnode.param<int>("stop_search_distance", stop_search_distance, 60);
+  private_rosnode.param<double>("fill_waypoints_interval", fill_waypoints_interval, 0.1);
 
   VelocitySetPath vs_path;
   VelocitySetInfo vs_info;
@@ -707,6 +749,8 @@ int main(int argc, char** argv)
       continue;
     }
 
+    int num_filled_waypoints = fillWaypointsNearestArea(vs_path, vs_path.getPrevWaypoints(), vs_info.getControlPose(), fill_waypoints_interval);
+
     int detection_waypoint = -1;
     lanelet::ConstLanelets closest_crosswalks;
     if (use_crosswalk_detection)
@@ -734,13 +778,13 @@ int main(int argc, char** argv)
     std_msgs::Int32 stopline_waypoint_index;
     if (detection_result == EControl::STOP)
     {
-      obstacle_waypoint_index.data = obstacle_waypoint;
+      obstacle_waypoint_index.data = obstacle_waypoint + num_filled_waypoints;
       stopline_waypoint_index.data = -1;
     }
     else if (detection_result == EControl::STOPLINE)
     {
       obstacle_waypoint_index.data = -1;
-      stopline_waypoint_index.data = obstacle_waypoint;
+      stopline_waypoint_index.data = obstacle_waypoint + num_filled_waypoints;
     }
     else
     {
