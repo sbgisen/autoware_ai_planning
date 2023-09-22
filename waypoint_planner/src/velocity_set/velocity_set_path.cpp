@@ -237,3 +237,13 @@ void VelocitySetPath::currentVelocityCallback(const geometry_msgs::TwistStampedC
 {
   current_vel_ = msg->twist.linear.x;
 }
+
+void VelocitySetPath::setPrevWaypoints(const autoware_msgs::Lane& lane)
+{
+  original_waypoints_ = lane;
+}
+
+void VelocitySetPath::setNewWaypoints(const autoware_msgs::Lane& lane)
+{
+  updated_waypoints_ = lane;
+}
