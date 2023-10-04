@@ -15,6 +15,7 @@
  */
 
 #include "waypoint_planner/astar_avoid/astar_avoid.h"
+#include "amathutils_lib/amathutils.hpp"
 
 AstarAvoid::AstarAvoid()
   : nh_()
@@ -31,6 +32,7 @@ AstarAvoid::AstarAvoid()
   private_nh_.param<int>("search_waypoints_delta", search_waypoints_delta_, 2);
   private_nh_.param<int>("closest_search_size", closest_search_size_, 30);
   private_nh_.param<int>("stopline_ahead_num", stopline_ahead_num_, 1);
+  private_nh_.param<double>("decel_limit", decel_limit_, 0.3);
 
   safety_waypoints_pub_ = nh_.advertise<autoware_msgs::Lane>("safety_waypoints", 1, true);
   costmap_sub_ = nh_.subscribe("costmap", 1, &AstarAvoid::costmapCallback, this);
@@ -362,6 +364,26 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
     wp.pose.pose.position.z = current_pose_global_.pose.position.z;  // height = const
     wp.twist.twist.linear.x = avoid_waypoints_velocity_ / 3.6;       // velocity = const
     avoid_waypoints_.waypoints.push_back(wp);
+  }
+
+  // smoothing connection point ( only deceleration )
+  double next_velocity =
+      base_waypoints_.waypoints[goal_index].twist.twist.linear.x;
+  if (next_velocity - avoid_waypoints_.waypoints.end()->twist.twist.linear.x <
+      0) {
+    auto next_position = base_waypoints_.waypoints[goal_index].pose.pose.position;
+    for (auto it = avoid_waypoints_.waypoints.rbegin();
+         it != avoid_waypoints_.waypoints.rend(); ++it) {
+      double dist =
+          amathutils::find_distance(next_position, it->pose.pose.position);
+      double vel = std::sqrt(std::pow(next_velocity, 2.0) - 2 * -decel_limit_ * dist);
+      if (vel > it->twist.twist.linear.x) {
+        break;
+      }
+      it->twist.twist.linear.x = vel;
+      next_velocity = vel;
+      next_position = it->pose.pose.position;
+    }
   }
 
   // add waypoints after goal index
