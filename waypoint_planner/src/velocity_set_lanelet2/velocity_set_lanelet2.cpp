@@ -644,7 +644,7 @@ int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane
   double dx = pose.pose.position.x - next_waypoint.pose.pose.position.x;
   double dy = pose.pose.position.y - next_waypoint.pose.pose.position.y;
   double dz = pose.pose.position.z - next_waypoint.pose.pose.position.z;
-  double distance = sqrt(pow(dx, 2) + pow(dy, 2) + pow(dz, 2));
+  double distance = sqrt(pow(dx, 2) + pow(dy, 2));
   double cumulative_distance = distance_per_waypoint;
 
   while (cumulative_distance < distance)
