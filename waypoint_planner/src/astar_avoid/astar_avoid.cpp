@@ -483,8 +483,8 @@ int AstarAvoid::updateClosestWaypoint(const autoware_msgs::Lane& waypoints, cons
   // search in all waypoints if lane_select judges you're not on waypoints
   if (previous_index == -1)
   {
-    ROS_WARN("[AstarAvoid::updateClosestWaypoint] previous_index == -1, -> RELAYING");
-    state_ = AstarAvoid::STATE::RELAYING;
+    ROS_WARN("[AstarAvoid::updateClosestWaypoint] previous_index == -1, -> STOPPING");
+    state_ = AstarAvoid::STATE::STOPPING;
     select_way_ = AstarAvoid::STATE::RELAYING;
     next_index = closest_waypoint_index_;
     base_waypoint_index_ = closest_waypoint_index_;
