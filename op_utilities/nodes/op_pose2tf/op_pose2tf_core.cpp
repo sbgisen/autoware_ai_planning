@@ -48,7 +48,7 @@ void PoseToTF::callbackGetPose(const geometry_msgs::PoseStampedConstPtr &msg)
   geometry_msgs::TransformStamped base_link_trans;
   base_link_trans.header.stamp = ros::Time::now();
   base_link_trans.header.frame_id = "map";
-  base_link_trans.child_frame_id = "/base_link";
+  base_link_trans.child_frame_id = "base_link";
   base_link_trans.transform.translation.x = msg->pose.position.x;
   base_link_trans.transform.translation.y = msg->pose.position.y;
   base_link_trans.transform.translation.z = msg->pose.position.z;

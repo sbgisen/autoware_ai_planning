@@ -673,7 +673,7 @@ void MPCFollower::publishTwist(const double &vel_cmd, const double &omega_cmd)
 {
   /* convert steering to twist */
   geometry_msgs::TwistStamped twist;
-  twist.header.frame_id = "/base_link";
+  twist.header.frame_id = "base_link";
   twist.header.stamp = ros::Time::now();
   twist.twist.linear.x = vel_cmd;
   twist.twist.linear.y = 0.0;
@@ -687,7 +687,7 @@ void MPCFollower::publishTwist(const double &vel_cmd, const double &omega_cmd)
 void MPCFollower::publishCtrlCmd(const double &vel_cmd, const double &acc_cmd, const double &steer_cmd)
 {
   autoware_msgs::ControlCommandStamped cmd;
-  cmd.header.frame_id = "/base_link";
+  cmd.header.frame_id = "base_link";
   cmd.header.stamp = ros::Time::now();
   cmd.cmd.linear_velocity = vel_cmd;
   cmd.cmd.linear_acceleration = acc_cmd;
