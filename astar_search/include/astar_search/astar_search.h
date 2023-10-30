@@ -39,12 +39,16 @@ public:
   AstarSearch();
   ~AstarSearch();
   void initialize(const nav_msgs::OccupancyGrid& costmap);
-  bool makePlan(const geometry_msgs::Pose& start_pose, const geometry_msgs::Pose& goal_pose);
+  bool makePlan(const geometry_msgs::Pose& start_pose, const std::vector<geometry_msgs::Pose>& goal_pose);
   void reset();
 
   const nav_msgs::Path& getPath() const
   {
     return path_;
+  }
+  int getGoalIndex() const
+  {
+    return reached_goal_index_;
   }
 
 private:
@@ -55,7 +59,7 @@ private:
   bool isOutOfRange(int index_x, int index_y);
   void setPath(const SimpleNode& goal);
   bool setStartNode(const geometry_msgs::Pose& start_pose);
-  bool setGoalNode(const geometry_msgs::Pose& goal_pose);
+  bool setGoalNode(const std::vector<geometry_msgs::Pose>& goal_pose);
   bool isGoal(double x, double y, double theta);
   bool isObs(int index_x, int index_y);
   bool detectCollision(const SimpleNode& sn);
@@ -72,10 +76,10 @@ private:
   double time_limit_;             // planning time limit [msec]
 
   // robot configs (TODO: obtain from vehicle_info)
-  double robot_length_;           // X [m]
-  double robot_width_;            // Y [m]
-  double robot_base2back_;        // base_link to rear [m]
-  double minimum_turning_radius_; // [m]]
+  double robot_length_;            // X [m]
+  double robot_width_;             // Y [m]
+  double robot_base2back_;         // base_link to rear [m]
+  double minimum_turning_radius_;  // [m]
 
   // search configs
   int theta_size_;                  // descritized angle table size [-]
@@ -104,12 +108,13 @@ private:
   nav_msgs::OccupancyGrid costmap_;
 
   // pose in costmap frame
-  geometry_msgs::PoseStamped start_pose_local_;
-  geometry_msgs::PoseStamped goal_pose_local_;
-  double goal_yaw_;
+  geometry_msgs::Pose start_pose_local_;
+  std::vector<geometry_msgs::Pose> goal_pose_local_;
 
   // result path
   nav_msgs::Path path_;
+  std::vector<int> goal_indices_;
+  int reached_goal_index_;
 };
 
 #endif

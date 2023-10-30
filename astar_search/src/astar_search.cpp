@@ -198,20 +198,18 @@ void AstarSearch::initialize(const nav_msgs::OccupancyGrid& costmap)
   }
 }
 
-bool AstarSearch::makePlan(const geometry_msgs::Pose& start_pose, const geometry_msgs::Pose& goal_pose)
+bool AstarSearch::makePlan(const geometry_msgs::Pose& start_pose, const std::vector<geometry_msgs::Pose>& goal_pose)
 {
   if (!setStartNode(start_pose))
   {
     ROS_DEBUG("Invalid start pose");
     return false;
   }
-
   if (!setGoalNode(goal_pose))
   {
     ROS_DEBUG("Invalid goal pose");
     return false;
   }
-
   return search();
 }
 
@@ -219,8 +217,8 @@ bool AstarSearch::setStartNode(const geometry_msgs::Pose& start_pose)
 {
   // Get index of start pose
   int index_x, index_y, index_theta;
-  start_pose_local_.pose = start_pose;
-  poseToIndex(start_pose_local_.pose, &index_x, &index_y, &index_theta);
+  start_pose_local_ = start_pose;
+  poseToIndex(start_pose_local_, &index_x, &index_y, &index_theta);
   SimpleNode start_sn(index_x, index_y, index_theta, 0, 0);
 
   // Check if start is valid
@@ -231,8 +229,8 @@ bool AstarSearch::setStartNode(const geometry_msgs::Pose& start_pose)
 
   // Set start node
   AstarNode& start_node = nodes_[index_y][index_x][index_theta];
-  start_node.x = start_pose_local_.pose.position.x;
-  start_node.y = start_pose_local_.pose.position.y;
+  start_node.x = start_pose_local_.position.x;
+  start_node.y = start_pose_local_.position.y;
   start_node.theta = 2.0 * M_PI / theta_size_ * index_theta;
   start_node.gc = 0;
   start_node.move_distance = 0;
@@ -243,58 +241,59 @@ bool AstarSearch::setStartNode(const geometry_msgs::Pose& start_pose)
   // set euclidean distance heuristic cost
   if (!use_wavefront_heuristic_ && !use_potential_heuristic_)
   {
-    start_node.hc = calcDistance(start_pose_local_.pose.position.x, start_pose_local_.pose.position.y,
-                                 goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) *
-                    distance_heuristic_weight_;
+    start_node.hc = path_length_limit_ * distance_heuristic_weight_;
   }
   else if (use_potential_heuristic_)
   {
     start_node.gc += start_node.hc;
-    start_node.hc += calcDistance(start_pose_local_.pose.position.x, start_pose_local_.pose.position.y,
-                                  goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) +
-                     distance_heuristic_weight_;
+    start_node.hc += path_length_limit_ + distance_heuristic_weight_;
   }
 
   // Push start node to openlist
   start_sn.cost = start_node.gc + start_node.hc;
   openlist_.push(start_sn);
-
   return true;
 }
 
-bool AstarSearch::setGoalNode(const geometry_msgs::Pose& goal_pose)
+bool AstarSearch::setGoalNode(const std::vector<geometry_msgs::Pose>& goal_pose)
 {
-  goal_pose_local_.pose = goal_pose;
-  goal_yaw_ = modifyTheta(tf::getYaw(goal_pose_local_.pose.orientation));
-
-  // Get index of goal pose
-  int index_x, index_y, index_theta;
-  poseToIndex(goal_pose_local_.pose, &index_x, &index_y, &index_theta);
-  SimpleNode goal_sn(index_x, index_y, index_theta, 0, 0);
-
-  // Check if goal is valid
-  if (isOutOfRange(index_x, index_y) || detectCollision(goal_sn))
+  bool result = false;
+  goal_pose_local_.clear();
+  goal_indices_.clear();
+  // Set goal nodes
+  for (int i = 0; i < static_cast<int>(goal_pose.size()); i++)
   {
-    return false;
-  }
+    // Get index of goal pose
+    int index_x, index_y, index_theta;
+    poseToIndex(goal_pose[i], &index_x, &index_y, &index_theta);
+    SimpleNode goal_sn(index_x, index_y, index_theta, 0, 0);
 
-  // Calculate wavefront heuristic cost
-  if (use_wavefront_heuristic_)
-  {
-    // auto start = std::chrono::system_clock::now();
-    bool wavefront_result = calcWaveFrontHeuristic(goal_sn);
-    // auto end = std::chrono::system_clock::now();
-    // auto usec = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    // std::cout << "wavefront : " << usec / 1000.0 << "[msec]" << std::endl;
-
-    if (!wavefront_result)
+    // Check if goal is valid
+    if (isOutOfRange(index_x, index_y) || detectCollision(goal_sn))
     {
-      ROS_DEBUG("Reachable is false...");
-      return false;
+      continue;
     }
-  }
 
-  return true;
+    // Calculate wavefront heuristic cost
+    if (use_wavefront_heuristic_)
+    {
+      // auto start = std::chrono::system_clock::now();
+      bool wavefront_result = calcWaveFrontHeuristic(goal_sn);
+      // auto end = std::chrono::system_clock::now();
+      // auto usec = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+      // std::cout << "wavefront : " << usec / 1000.0 << "[msec]" << std::endl;
+
+      if (!wavefront_result)
+      {
+        ROS_DEBUG("Reachable is false...");
+        continue;
+      }
+    }
+    goal_pose_local_.push_back(goal_pose[i]);
+    goal_indices_.push_back(i);
+    result = true;
+  }
+  return result;
 }
 
 void AstarSearch::poseToIndex(const geometry_msgs::Pose& pose, int* index_x, int* index_y, int* index_theta)
@@ -410,20 +409,28 @@ bool AstarSearch::search()
       double next_hc = nodes_[next_sn.index_y][next_sn.index_x][0].hc;  // wavefront or distance transform heuristic
 
       // increase the cost with euclidean distance
+      geometry_msgs::Pose nearest_goal = goal_pose_local_[0];
+      double nearest_distance = DBL_MAX;
+      for (int i = 0; i < static_cast<int>(goal_pose_local_.size()); i++)
+      {
+        double distance = calcDistance(next_x, next_y, goal_pose_local_[i].position.x, goal_pose_local_[i].position.y);
+        if (distance < nearest_distance)
+        {
+          nearest_distance = distance;
+          nearest_goal = goal_pose_local_[i];
+        }
+      }
       if (use_potential_heuristic_)
       {
         next_gc += nodes_[next_sn.index_y][next_sn.index_x][0].hc;
-        next_hc += calcDistance(next_x, next_y, goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) *
-                   distance_heuristic_weight_;
+        next_hc += nearest_distance * distance_heuristic_weight_;
       }
 
       // increase the cost with euclidean distance
       if (!use_wavefront_heuristic_ && !use_potential_heuristic_)
       {
-        next_hc = calcDistance(next_x, next_y, goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) *
-                  distance_heuristic_weight_;
+        next_hc = nearest_distance * distance_heuristic_weight_;
       }
-
       // Ignore invalit nodes
       if ((enable_path_angle_limit_ && move_angle > path_angle_limit_) ||
           (enable_path_length_limit_ && move_distance > path_length_limit_))
@@ -513,29 +520,34 @@ void AstarSearch::setPath(const SimpleNode& goal)
 // Check lateral offset, longitudinal offset and angle
 bool AstarSearch::isGoal(double x, double y, double theta)
 {
-  // To reduce computation time, we use square value for distance
-  static const double lateral_goal_range =
-      lateral_goal_range_ / 2.0;  // [meter], divide by 2 means we check left and right
-  static const double longitudinal_goal_range =
-      longitudinal_goal_range_ / 2.0;                                         // [meter], check only behind of the goal
-  static const double goal_angle = M_PI * (angle_goal_range_ / 2.0) / 180.0;  // degrees -> radian
-
-  // Calculate the node coordinate seen from the goal point
-  tf::Point p(x, y, 0);
-  geometry_msgs::Point relative_node_point = calcRelativeCoordinate(goal_pose_local_.pose, p);
-
-  // Check Pose of goal
-  if (relative_node_point.x < 0 &&  // shoud be behind of goal
-      std::fabs(relative_node_point.x) < longitudinal_goal_range &&
-      std::fabs(relative_node_point.y) < lateral_goal_range)
+  for (int goal_num = 0; goal_num < static_cast<int>(goal_pose_local_.size()); goal_num++)
   {
-    // Check the orientation of goal
-    if (calcDiffOfRadian(goal_yaw_, theta) < goal_angle)
+    // To reduce computation time, we use square value for distance
+    static const double lateral_goal_range =
+        lateral_goal_range_ / 2.0;  // [meter], divide by 2 means we check left and right
+    static const double longitudinal_goal_range =
+        longitudinal_goal_range_ / 2.0;  // [meter], check only behind of the goal
+    static const double goal_angle = M_PI * (angle_goal_range_ / 2.0) / 180.0;  // degrees -> radian
+
+    // Calculate the node coordinate seen from the goal point
+    tf::Point p(x, y, 0);
+    geometry_msgs::Point relative_node_point = calcRelativeCoordinate(goal_pose_local_[goal_num], p);
+
+    // Check Pose of goal
+    double goal_yaw = tf::getYaw(goal_pose_local_[goal_num].orientation);
+    if (relative_node_point.x < 0 &&  // shoud be behind of goal
+        std::fabs(relative_node_point.x) < longitudinal_goal_range &&
+        std::fabs(relative_node_point.y) < lateral_goal_range)
     {
-      return true;
+      // Check the orientation of goal
+      if (calcDiffOfRadian(goal_yaw, theta) < goal_angle)
+      {
+        reached_goal_index_ = goal_indices_.at(goal_num);
+        return true;
+      }
     }
   }
-
+  reached_goal_index_ = 0;
   return false;
 }
 
@@ -618,7 +630,7 @@ bool AstarSearch::calcWaveFrontHeuristic(const SimpleNode& sn)
   int start_index_x;
   int start_index_y;
   int start_index_theta;
-  poseToIndex(start_pose_local_.pose, &start_index_x, &start_index_y, &start_index_theta);
+  poseToIndex(start_pose_local_, &start_index_x, &start_index_y, &start_index_theta);
 
   // Whether the robot can reach goal
   bool reachable = false;
