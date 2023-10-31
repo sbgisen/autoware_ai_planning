@@ -76,6 +76,9 @@ void LaneSelectNode::initForROS()
   private_nh_.param<double>("lane_change_target_minimum", lane_change_target_minimum_, double(5.0));
   private_nh_.param<double>("vector_length_hermite_curve", vlength_hermite_curve_, double(10.0));
   private_nh_.param<double>("update_rate", update_rate_, double(10.0));
+  private_nh_.param<double>("current_status_timeout", current_status_timeout_, 0.2);
+  current_pose_time_ = ros::Time::now();
+  current_velocity_time_ = ros::Time::now();
 
   // Kick off a timer to publish base_waypoints, closest_waypoint, change_flag, current_lane_id, and vehicle_location
   timer_ = nh_.createTimer(ros::Duration(1.0 / update_rate_), &LaneSelectNode::processing, this);
@@ -118,8 +121,25 @@ void LaneSelectNode::resetSubscriptionFlag()
   is_current_velocity_subscribed_ = false;
 }
 
+void LaneSelectNode::checkCurrentStatusTimeout(double timeout)
+{
+  if ((ros::Time::now() - current_pose_time_).toSec() > current_status_timeout_)
+  {
+    ROS_WARN_THROTTLE(5, "Topic current_pose timeout (%f seconds)", (ros::Time::now() - current_pose_time_).toSec());
+    is_current_pose_subscribed_ = false;
+  }
+  if ((ros::Time::now() - current_velocity_time_).toSec() > current_status_timeout_)
+  {
+    ROS_WARN_THROTTLE(5, "Topic current_velocity timeout (%f seconds)",
+                      (ros::Time::now() - current_velocity_time_).toSec());
+
+    is_current_velocity_subscribed_ = false;
+  }
+}
+
 void LaneSelectNode::processing(const ros::TimerEvent& e)
 {
+  checkCurrentStatusTimeout(current_status_timeout_);
   if (!isAllTopicsSubscribed())
     return;
 
@@ -179,7 +199,6 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     publishVehicleLocation(std::get<1>(tuple_vec_.at(current_lane_idx_)), lane_array_id_);
   }
   publishVisualizer();
-  resetSubscriptionFlag();
 }
 
 int32_t LaneSelectNode::getClosestLaneChangeWaypointNumber(const std::vector<autoware_msgs::Waypoint>& wps,
@@ -671,9 +690,11 @@ void LaneSelectNode::callbackFromPoseTwistStamped(const geometry_msgs::PoseStamp
 {
   current_pose_ = *pose_msg;
   is_current_pose_subscribed_ = true;
+  current_pose_time_ = pose_msg->header.stamp;
 
   current_velocity_ = *twist_msg;
   is_current_velocity_subscribed_ = true;
+  current_velocity_time_ = twist_msg->header.stamp;
 }
 
 void LaneSelectNode::callbackFromDecisionMakerState(const std_msgs::StringConstPtr& msg)

@@ -89,7 +89,8 @@ private:
   std_msgs::Bool emergency_stop_msg_;
   ros::Time remote_cmd_time_, emergency_handling_time_;
   ros::Time state_time_;
-  ros::Duration timeout_period_;
+  double estop_timeout_;
+  double cmd_vel_timeout_;
   double loop_rate_;
 
   std::thread watchdog_timer_thread_;

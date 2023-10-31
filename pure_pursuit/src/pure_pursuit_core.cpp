@@ -62,6 +62,11 @@ void PurePursuitNode::initForROS()
   private_nh_.param("out_ctrl_cmd_name", out_ctrl_cmd, std::string("ctrl_raw"));
   private_nh_.param("output_interface", output_interface_, std::string("ctrl_cmd"));
   nh_.param("vehicle_info/wheel_base", wheel_base_, 2.7);
+  private_nh_.param<double>("current_status_timeout", current_status_timeout_, 0.2);
+  private_nh_.param<double>("target_waypoints_timeout", target_waypoints_timeout_, 0.3);
+  current_pose_time_ = ros::Time::now();
+  current_velocity_time_ = ros::Time::now();
+  target_waypoints_time_ = ros::Time::now();
 
   // Output type, use old parameter name only if it is set
   if (private_nh_.hasParam("publishes_for_steering_robot"))
@@ -117,6 +122,8 @@ void PurePursuitNode::run()
   while (ros::ok())
   {
     ros::spinOnce();
+    checkCurrentStatusTimeout();
+    checkTargetWaypointTimeout();
     if (!is_pose_set_ || !is_waypoint_set_ || !is_velocity_set_)
     {
       if (!is_pose_set_)
@@ -131,7 +138,7 @@ void PurePursuitNode::run()
       {
         ROS_WARN_THROTTLE(5, "Waiting for current_velocity topic ...");
       }
-
+      // publishControlCommands(false, 0);
       loop_rate.sleep();
       continue;
     }
@@ -160,10 +167,6 @@ void PurePursuitNode::run()
     pub16_.publish(angular_gravity_msg);
 
     publishDeviationCurrentPosition(pp_.getCurrentPose().position, pp_.getCurrentWaypoints());
-
-    is_pose_set_ = false;
-    is_velocity_set_ = false;
-
     loop_rate.sleep();
   }
 }
@@ -206,6 +209,32 @@ void PurePursuitNode::publishCtrlCmdStamped(const bool& can_get_curvature, const
   ccs.cmd.linear_acceleration = can_get_curvature ? computeCommandAccel() : 0;
   ccs.cmd.steering_angle = can_get_curvature ? convertCurvatureToSteeringAngle(wheel_base_, kappa) : 0;
   pub2_.publish(ccs);
+}
+
+void PurePursuitNode::checkCurrentStatusTimeout()
+{
+  if ((ros::Time::now() - current_pose_time_).toSec() > current_status_timeout_)
+  {
+    ROS_WARN_THROTTLE(5, "Topic current_pose timeout (%f seconds)", (ros::Time::now() - current_pose_time_).toSec());
+    is_pose_set_ = false;
+  }
+  if ((ros::Time::now() - current_velocity_time_).toSec() > current_status_timeout_)
+  {
+    ROS_WARN_THROTTLE(5, "Topic current_velocity timeout (%f seconds)",
+                      (ros::Time::now() - current_velocity_time_).toSec());
+
+    is_velocity_set_ = false;
+  }
+}
+
+void PurePursuitNode::checkTargetWaypointTimeout()
+{
+  if ((ros::Time::now() - target_waypoints_time_).toSec() > target_waypoints_timeout_)
+  {
+    ROS_WARN_THROTTLE(5, "Topic final_waypoints timeout (%f seconds)",
+                      (ros::Time::now() - target_waypoints_time_).toSec());
+    is_waypoint_set_ = false;
+  }
 }
 
 double PurePursuitNode::computeLookaheadDistance() const
@@ -305,6 +334,7 @@ void PurePursuitNode::callbackFromCurrentPose(const geometry_msgs::PoseStampedCo
 {
   pp_.setCurrentPose(msg);
   is_pose_set_ = true;
+  current_pose_time_ = msg->header.stamp;
 }
 
 void PurePursuitNode::callbackFromCurrentVelocity(const geometry_msgs::TwistStampedConstPtr& msg)
@@ -312,6 +342,7 @@ void PurePursuitNode::callbackFromCurrentVelocity(const geometry_msgs::TwistStam
   current_linear_velocity_ = msg->twist.linear.x;
   pp_.setCurrentVelocity(current_linear_velocity_);
   is_velocity_set_ = true;
+  current_velocity_time_ = msg->header.stamp;
 }
 
 void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& msg)
@@ -325,7 +356,6 @@ void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& m
     expand_size_ = -expanded_lane.waypoints.size();
     connectVirtualLastWaypoints(&expanded_lane, direction_);
     expand_size_ += expanded_lane.waypoints.size();
-
     pp_.setCurrentWaypoints(expanded_lane.waypoints);
   }
   else
@@ -333,6 +363,8 @@ void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& m
     pp_.setCurrentWaypoints(msg->waypoints);
   }
   is_waypoint_set_ = true;
+  // target_waypoints_time_ = msg->header.stamp;
+  target_waypoints_time_ = ros::Time::now();
 }
 
 void PurePursuitNode::connectVirtualLastWaypoints(autoware_msgs::Lane* lane, LaneDirection direction)
