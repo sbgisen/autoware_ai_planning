@@ -40,12 +40,13 @@ using AwDiagStatus = autoware_system_msgs::DiagnosticStatus;
 TwistGate::TwistGate(const ros::NodeHandle& nh, const ros::NodeHandle& private_nh)
   : nh_(nh)
   , private_nh_(private_nh)
-  , timeout_period_(10.0)
+  , estop_timeout_(10.0)
   , command_mode_(CommandMode::AUTO)
   , previous_command_mode_(CommandMode::AUTO)
 {
   private_nh_.param<double>("loop_rate", loop_rate_, 30.0);
   private_nh_.param<bool>("use_decision_maker", use_decision_maker_, false);
+  private_nh_.param<double>("cmd_vel_timeout", cmd_vel_timeout_, 0.5);
 
   health_checker_ptr_ = std::make_shared<autoware_health_checker::HealthChecker>(nh_, private_nh_);
   control_command_pub_ = nh_.advertise<std_msgs::String>("ctrl_mode", 1);
@@ -87,6 +88,7 @@ TwistGate::~TwistGate()
 
 void TwistGate::resetVehicleCmdMsg()
 {
+  twist_gate_msg_.header.stamp = ros::Time::now();
   twist_gate_msg_.twist_cmd.twist.linear.x = 0;
   twist_gate_msg_.twist_cmd.twist.angular.z = 0;
   twist_gate_msg_.mode = 0;
@@ -156,8 +158,8 @@ void TwistGate::watchdogTimer()
     health_checker_ptr_->CHECK_TRUE("emergency_stop_button", emergency_stop_msg_.data, level, "emergency stop button "
                                                                                               "is pushed.");
 
-    // if no emergency message received for more than timeout_period_
-    if ((now_time - emergency_handling_time_) > timeout_period_)
+    // if no emergency message received for more than estop_timeout_
+    if ((now_time - emergency_handling_time_) > ros::Duration(estop_timeout_))
     {
       emergency_handling_active_ = false;
     }
@@ -333,7 +335,15 @@ void TwistGate::emergencyCmdCallback(const vehicle_cmd_msg_t::ConstPtr& input_ms
 
 void TwistGate::timerCallback(const ros::TimerEvent& e)
 {
-  vehicle_cmd_pub_.publish(twist_gate_msg_);
+  if (ros::Time::now() - twist_gate_msg_.header.stamp > ros::Duration(cmd_vel_timeout_) &&
+      ros::Time::now() - twist_gate_msg_.header.stamp < ros::Duration(0))
+  {
+    ROS_WARN_THROTTLE(5.0, "TwistGate: cmd_vel_timeout_: %f", (ros::Time::now() - twist_gate_msg_.header.stamp).toSec());
+  }
+  else
+  {
+    vehicle_cmd_pub_.publish(twist_gate_msg_);
+  }
 }
 
 void TwistGate::configCallback(const autoware_config_msgs::ConfigTwistFilter& msg)

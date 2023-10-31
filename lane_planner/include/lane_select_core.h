@@ -112,6 +112,8 @@ private:
   double lane_change_target_minimum_;
   double vlength_hermite_curve_;
   int search_closest_waypoint_minimum_dt_;
+  double current_status_timeout_;    // Set timeout seconds for current velocity and pose
+  ros::Time current_pose_time_, current_velocity_time_;
 
   // topics
   geometry_msgs::PoseStamped current_pose_;
@@ -141,6 +143,7 @@ private:
   // functions
   void resetLaneIdx();
   void resetSubscriptionFlag();
+  void checkCurrentStatusTimeout(double timeout);
   bool isAllTopicsSubscribed();
   void processing(const ros::TimerEvent& e);
   void publishLane(const autoware_msgs::Lane& lane);
