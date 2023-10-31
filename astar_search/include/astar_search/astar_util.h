@@ -84,9 +84,9 @@ inline double calcDistance(double x1, double y1, double x2, double y2)
 
 inline double modifyTheta(double theta)
 {
-  if (theta < 0.0)
+  if (theta < -M_PI)
     return theta + 2.0 * M_PI;
-  if (theta >= 2.0 * M_PI)
+  if (theta > M_PI)
     return theta - 2.0 * M_PI;
 
   return theta;
