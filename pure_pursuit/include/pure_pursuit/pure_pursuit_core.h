@@ -83,7 +83,8 @@ private:
   bool is_waypoint_set_, is_pose_set_, is_velocity_set_;
   double current_linear_velocity_, command_linear_velocity_;
   double current_status_timeout_;    // Set timeout seconds for current velocity and pose
-  ros::Time current_pose_time_, current_velocity_time_;
+  double target_waypoints_timeout_;  // Set timeout seconds for target waypoints
+  ros::Time current_pose_time_, current_velocity_time_, target_waypoints_time_;
   double wheel_base_;
   int expand_size_;
   LaneDirection direction_;
@@ -113,7 +114,8 @@ private:
   void connectVirtualLastWaypoints(autoware_msgs::Lane* expand_lane, LaneDirection direction);
 
   int getSgn() const;
-  void checkCurrentStatusTimeout(double timeout);
+  void checkCurrentStatusTimeout();
+  void checkTargetWaypointTimeout();
   double computeLookaheadDistance() const;
   double computeCommandVelocity() const;
   double computeCommandAccel() const;

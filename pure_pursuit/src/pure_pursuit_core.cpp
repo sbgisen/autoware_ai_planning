@@ -63,8 +63,10 @@ void PurePursuitNode::initForROS()
   private_nh_.param("output_interface", output_interface_, std::string("ctrl_cmd"));
   nh_.param("vehicle_info/wheel_base", wheel_base_, 2.7);
   private_nh_.param<double>("current_status_timeout", current_status_timeout_, 0.2);
+  private_nh_.param<double>("target_waypoints_timeout", target_waypoints_timeout_, 0.3);
   current_pose_time_ = ros::Time::now();
   current_velocity_time_ = ros::Time::now();
+  target_waypoints_time_ = ros::Time::now();
 
   // Output type, use old parameter name only if it is set
   if (private_nh_.hasParam("publishes_for_steering_robot"))
@@ -120,7 +122,8 @@ void PurePursuitNode::run()
   while (ros::ok())
   {
     ros::spinOnce();
-    checkCurrentStatusTimeout(current_status_timeout_);
+    checkCurrentStatusTimeout();
+    checkTargetWaypointTimeout();
     if (!is_pose_set_ || !is_waypoint_set_ || !is_velocity_set_)
     {
       if (!is_pose_set_)
@@ -135,7 +138,7 @@ void PurePursuitNode::run()
       {
         ROS_WARN_THROTTLE(5, "Waiting for current_velocity topic ...");
       }
-
+      // publishControlCommands(false, 0);
       loop_rate.sleep();
       continue;
     }
@@ -208,7 +211,7 @@ void PurePursuitNode::publishCtrlCmdStamped(const bool& can_get_curvature, const
   pub2_.publish(ccs);
 }
 
-void PurePursuitNode::checkCurrentStatusTimeout(double timeout)
+void PurePursuitNode::checkCurrentStatusTimeout()
 {
   if ((ros::Time::now() - current_pose_time_).toSec() > current_status_timeout_)
   {
@@ -221,6 +224,16 @@ void PurePursuitNode::checkCurrentStatusTimeout(double timeout)
                       (ros::Time::now() - current_velocity_time_).toSec());
 
     is_velocity_set_ = false;
+  }
+}
+
+void PurePursuitNode::checkTargetWaypointTimeout()
+{
+  if ((ros::Time::now() - target_waypoints_time_).toSec() > target_waypoints_timeout_)
+  {
+    ROS_WARN_THROTTLE(5, "Topic final_waypoints timeout (%f seconds)",
+                      (ros::Time::now() - target_waypoints_time_).toSec());
+    is_waypoint_set_ = false;
   }
 }
 
@@ -343,7 +356,6 @@ void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& m
     expand_size_ = -expanded_lane.waypoints.size();
     connectVirtualLastWaypoints(&expanded_lane, direction_);
     expand_size_ += expanded_lane.waypoints.size();
-
     pp_.setCurrentWaypoints(expanded_lane.waypoints);
   }
   else
@@ -351,6 +363,8 @@ void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& m
     pp_.setCurrentWaypoints(msg->waypoints);
   }
   is_waypoint_set_ = true;
+  // target_waypoints_time_ = msg->header.stamp;
+  target_waypoints_time_ = ros::Time::now();
 }
 
 void PurePursuitNode::connectVirtualLastWaypoints(autoware_msgs::Lane* lane, LaneDirection direction)
