@@ -187,7 +187,7 @@ void AstarAvoid::run()
     }
     else if (state_ == AstarAvoid::STATE::AVOIDING)
     {
-      // Check if goal reaached
+      // Check if goal reached
       if (avoid_waypoint_index_ >= avoid_finish_index_)
       {
         ROS_INFO("AVOIDING -> RELAYING, Reached goal");

@@ -43,7 +43,7 @@
 #include <autoware_msgs/Waypoint.h>
 
 // use of routing graph in detecting lanelets for each waypoint
-// folowing routing graph may be computationally cheaper if very large map
+// following routing graph may be computationally cheaper if very large map
 // (computation cost may be in unique insert used to store connected lanelets)
 // for smaller maps - faster to just find nearest lanelet for each waypoint.
 #define LANE_RULES_USE_ROUTING_GRAPH false
@@ -170,7 +170,7 @@ std::vector<size_t> check_waypoints_for_stoplines(const std::vector<Eigen::Vecto
   for (auto wp_i = waypoints.begin(); wp_i < waypoints.end() - 1; wp_i++)
   {
     lanelet::Point3d wp_p0(lanelet::utils::getId(), (*wp_i).x(), (*wp_i).y(), (*wp_i).z());
-    lanelet::Point3d wp_p1(lanelet::utils::getId(),(*(wp_i + 1)).x(), (*(wp_i + 1)).y(), (*(wp_i + 1)).z());
+    lanelet::Point3d wp_p1(lanelet::utils::getId(), (*(wp_i + 1)).x(), (*(wp_i + 1)).y(), (*(wp_i + 1)).z());
     lanelet::BasicPoint2d wp_p02((*wp_i).x(), (*wp_i).y());
     lanelet::ConstLanelets candidate_lanelets;
 
@@ -460,8 +460,8 @@ int main(int argc, char** argv)
                                                               pub_waypoint_latch);
   g_red_pub =
       rosnode.advertise<autoware_msgs::LaneArray>("red_waypoints_array", pub_waypoint_queue_size, pub_waypoint_latch);
-  g_green_pub = rosnode.advertise<autoware_msgs::LaneArray>("green_waypoints_array", pub_waypoint_queue_size,
-                                                            pub_waypoint_latch);
+  g_green_pub =
+      rosnode.advertise<autoware_msgs::LaneArray>("green_waypoints_array", pub_waypoint_queue_size, pub_waypoint_latch);
 
   ros::Subscriber bin_map_sub = rosnode.subscribe("lanelet_map_bin", 10, binMapCallback);
   ros::Subscriber waypoint_sub = rosnode.subscribe("lane_waypoints_array", sub_waypoint_queue_size, create_waypoint);
