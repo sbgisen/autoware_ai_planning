@@ -43,7 +43,7 @@
 #include <autoware_msgs/Waypoint.h>
 
 // use of routing graph in detecting lanelets for each waypoint
-// folowing routing graph may be computationally cheaper if very large map
+// following routing graph may be computationally cheaper if very large map
 // (computation cost may be in unique insert used to store connected lanelets)
 // for smaller maps - faster to just find nearest lanelet for each waypoint.
 #define LANE_RULES_USE_ROUTING_GRAPH false
