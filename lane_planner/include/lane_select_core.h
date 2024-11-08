@@ -150,7 +150,7 @@ private:
   void publishClosestWaypoint(const int32_t clst_wp);
   void publishChangeFlag(const ChangeFlag flag);
   void publishVehicleLocation(const int32_t clst_wp, const int32_t larray_id);
-  bool updateClosestWaypointNumberForEachLane();
+  bool updateCurrentIndexForEachLane();
   int32_t findMostClosestLane(const std::vector<uint32_t> idx_vec, const geometry_msgs::Point p);
   void findCurrentLane();
   void findNeighborLanes();
@@ -165,10 +165,6 @@ private:
     ros::spinOnce();
   }
 };
-
-int32_t getClosestWaypointNumber(const autoware_msgs::Lane& current_lane, const geometry_msgs::Pose& current_pose,
-                                 const geometry_msgs::Twist& current_velocity, const int32_t previous_number,
-                                 const double distance_threshold, const int search_closest_waypoint_minimum_dt);
 
 double getTwoDimensionalDistance(const geometry_msgs::Point& target1, const geometry_msgs::Point& target2);
 

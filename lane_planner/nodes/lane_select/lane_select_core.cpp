@@ -144,7 +144,7 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     return;
 
   // search closest waypoint number for each lanes
-  if (!updateClosestWaypointNumberForEachLane())
+  if (!updateCurrentIndexForEachLane())
   {
     publishClosestWaypoint(-1);
     publishVehicleLocation(-1, lane_array_id_);
@@ -155,7 +155,7 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
 
   if (current_lane_idx_ == -1)
   {
-    // Note: Only call it after calling updateClosestWaypointNumberForEachLane()
+    // Note: Only call it after calling updateCurrentIndexForEachLane()
     ROS_INFO_THROTTLE(2, "[LaneSelectNode::processing] current_lane_idx_ == -1. Search current lane.");
     findCurrentLane();
   }
@@ -167,10 +167,7 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     try
     {
       changeLane();
-      std::get<1>(lane_for_change_) =
-          getClosestWaypointNumber(std::get<0>(lane_for_change_), current_pose_.pose, current_velocity_.twist,
-                                   std::get<1>(lane_for_change_), distance_threshold_,
-                                   search_closest_waypoint_minimum_dt_);
+      std::get<1>(lane_for_change_) = getClosestIndex(std::get<0>(lane_for_change_), current_pose_.pose);
       std::get<2>(lane_for_change_) = static_cast<ChangeFlag>(
           std::get<0>(lane_for_change_).waypoints.at(std::get<1>(lane_for_change_)).change_flag);
       publishLane(std::get<0>(lane_for_change_));
@@ -325,13 +322,11 @@ void LaneSelectNode::changeLane()
   return;
 }
 
-bool LaneSelectNode::updateClosestWaypointNumberForEachLane()
+bool LaneSelectNode::updateCurrentIndexForEachLane()
 {
   for (auto& el : tuple_vec_)
   {
-    std::get<1>(el) =
-        getClosestWaypointNumber(std::get<0>(el), current_pose_.pose, current_velocity_.twist, std::get<1>(el),
-                                 distance_threshold_, search_closest_waypoint_minimum_dt_);
+    std::get<1>(el) = updateCurrentIndex(std::get<0>(el), current_pose_.pose, std::get<1>(el));
   }
 
   // confirm if all closest waypoint numbers are -1. If so, output warning
@@ -773,69 +768,6 @@ double getRelativeAngle(const geometry_msgs::Pose& waypoint_pose, const geometry
   tf::Vector3 current_v = current_tfpose.getBasis() * x_axis;
 
   return current_v.angle(waypoint_v) * 180 / M_PI;
-}
-
-// get closest waypoint from current pose
-int32_t getClosestWaypointNumber(const autoware_msgs::Lane& current_lane, const geometry_msgs::Pose& current_pose,
-                                 const geometry_msgs::Twist& current_velocity, const int32_t previous_number,
-                                 const double distance_threshold, const int search_closest_waypoint_minimum_dt)
-{
-  if (current_lane.waypoints.size() < 2)
-    return -1;
-
-  std::vector<uint32_t> idx_vec;
-  // if previous number is -1, search closest waypoint from waypoints in front of current pose
-  uint32_t range_min = 0;
-  uint32_t range_max = current_lane.waypoints.size() - 1;
-  if (previous_number == -1)
-  {
-    idx_vec.reserve(current_lane.waypoints.size());
-  }
-  else
-  {
-    // start searching for closest waypoint from range_min (previous waypoint)
-    range_min = static_cast<uint32_t>(previous_number);
-    double ratio = 3;
-    double dt = std::max(current_velocity.linear.x * ratio, static_cast<double>(search_closest_waypoint_minimum_dt));
-    if (static_cast<uint32_t>(previous_number + dt) < current_lane.waypoints.size())
-    {
-      range_max = static_cast<uint32_t>(previous_number + dt);
-    }
-  }
-  const LaneDirection dir = getLaneDirection(current_lane);
-  const int sgn = (dir == LaneDirection::Forward) ? 1 : (dir == LaneDirection::Backward) ? -1 : 0;
-  for (uint32_t i = range_min; i <= range_max; i++)
-  {
-    geometry_msgs::Point converted_p =
-        convertPointIntoRelativeCoordinate(current_lane.waypoints.at(i).pose.pose.position, current_pose);
-    double angle = getRelativeAngle(current_lane.waypoints.at(i).pose.pose, current_pose);
-    if (converted_p.x * sgn > 0 && angle < 90)
-    {
-      idx_vec.push_back(i);
-    }
-  }
-
-  if (idx_vec.empty())
-    return -1;
-
-  std::vector<double> dist_vec;
-  dist_vec.reserve(idx_vec.size());
-  for (const auto& el : idx_vec)
-  {
-    double distance =
-        getTwoDimensionalDistance(current_pose.position, current_lane.waypoints.at(el).pose.pose.position);
-    dist_vec.push_back(distance);
-  }
-
-  // Check distance
-  std::vector<double>::iterator itr = std::min_element(dist_vec.begin(), dist_vec.end());
-  if (*itr > distance_threshold)
-  {
-    return -1;
-  }
-
-  int32_t closest_waypoint_idx = idx_vec.at(static_cast<uint32_t>(std::distance(dist_vec.begin(), itr)));
-  return closest_waypoint_idx;
 }
 
 // let the linear equation be "ax + by + c = 0"
