@@ -270,7 +270,7 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   const bool interpolation = interpolateNextTarget(target_waypoint_index_, &next_target_position_);
   if (!interpolation)
   {
-    return false;
+    // return false;
   }
   return true;
 }
