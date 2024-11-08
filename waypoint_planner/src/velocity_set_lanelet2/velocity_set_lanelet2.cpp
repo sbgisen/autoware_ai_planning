@@ -628,7 +628,7 @@ void binMapCallback(const autoware_lanelet2_msgs::MapBin& msg)
 // fill waypoints from the current position to the nearest point
 int fillWaypointsNearestArea(VelocitySetPath& vs_path, const autoware_msgs::Lane& lane, const geometry_msgs::PoseStamped& pose, const double distance_per_waypoint)
 {
-  if(distance_per_waypoint <= 0)
+  if (distance_per_waypoint <= 0 || lane.waypoints.empty())
     return 0;
 
   autoware_msgs::Waypoint next_waypoint = lane.waypoints.at(0);
