@@ -211,47 +211,15 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
     // Recover by setting the curvature to the maximum value and the velocity to a small value
     geometry_msgs::Pose target_pose = current_waypoints_.at(target_waypoint_index_).pose.pose;
     geometry_msgs::Pose relative_target_pose = getRelativePose(current_pose_, target_pose);
-    if (!use_back_)
+    if (relative_target_pose.position.y > 0)
     {
-      if (relative_target_pose.position.y > 0)
-      {
-        output_kappa = 1.0 / RADIUS_MIN_;
-        output_velocity = RECOVERY_VEL;
-      }
-      else
-      {
-        output_kappa = -1.0 / RADIUS_MIN_;
-        output_velocity = RECOVERY_VEL;
-      }
+      output_kappa = 1.0 / RADIUS_MIN_;
+      output_velocity = RECOVERY_VEL;
     }
     else
     {
-      if (relative_target_pose.position.x > 0)
-      {
-        if (relative_target_pose.position.y > 0)
-        {
-          output_kappa = 1.0 / RADIUS_MIN_;
-          output_velocity = RECOVERY_VEL;
-        }
-        else
-        {
-          output_kappa = 1.0 / RADIUS_MIN_;
-          output_velocity = RECOVERY_VEL;
-        }
-      }
-      else
-      {
-        if (relative_target_pose.position.y > 0)
-        {
-          output_kappa = -1.0 / RADIUS_MIN_;
-          output_velocity = -RECOVERY_VEL;
-        }
-        else
-        {
-          output_kappa = -1.0 / RADIUS_MIN_;
-          output_velocity = -RECOVERY_VEL;
-        }
-      }
+      output_kappa = -1.0 / RADIUS_MIN_;
+      output_velocity = RECOVERY_VEL;
     }
     return true;
   }
@@ -287,20 +255,24 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   }
   output_kappa = calcCurvature(next_target_position_);
 
+  // Return true if the curvature can be calculated
+  if (target_waypoint_index_ == 0 || target_waypoint_index_ == path_size - 1 ||
+      target_waypoint_index_ == current_waypoint_index_)
+  {
+    return false;
+  }
+  else if (!is_linear_interpolation_)
+  {
+    return true;
+  }
+
   // Perform linear interpolation for the next target
   const bool interpolation = interpolateNextTarget(target_waypoint_index_, &next_target_position_);
   if (!interpolation)
   {
     return false;
   }
-
-  // Return true if the curvature can be calculated
-  if (!is_linear_interpolation_ || target_waypoint_index_ == 0 || target_waypoint_index_ == path_size - 1 ||
-      target_waypoint_index_ == current_waypoint_index_)
-  {
-    return true;
-  }
-  return false;
+  return true;
 }
 
 bool PurePursuit::getCommandVelocity(double& output_velocity)
