@@ -724,6 +724,7 @@ int main(int argc, char** argv)
   final_waypoints_pub = rosnode.advertise<autoware_msgs::Lane>("final_waypoints", 1, true);
 
   ros::Rate loop_rate(LOOP_RATE);
+  int closest_waypoint = -1;
   while (ros::ok())
   {
     ros::spinOnce();
@@ -739,8 +740,8 @@ int main(int argc, char** argv)
         ROS_WARN("Failed to get map->lidar transform. skip computation: %s", ex.what());
         continue;
     }
-
-    int closest_waypoint = 0;
+    
+    closest_waypoint = updateCurrentIndex(vs_path.getPrevWaypoints(), vs_info.getControlPose().pose, closest_waypoint);
 
     if (!vs_info.getSetPose() || !vs_path.getSetPath())
     {
