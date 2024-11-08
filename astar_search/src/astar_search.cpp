@@ -382,7 +382,10 @@ bool AstarSearch::search()
 
       // Increase reverse cost
       if (state.back != current_an->back)
+      {
+        double reverse_cost_scale = std::max(1.0, reverse_weight_);
         move_cost *= reverse_weight_;
+      }
       // Increase curve cost
       double curve_cost_scale = std::max(0.0, 1.0 + (fabs(state.rotation) * (curve_weight_ - 1.0)));
       move_cost *= curve_cost_scale;
@@ -497,7 +500,7 @@ void AstarSearch::setPath(const SimpleNode& goal)
   while (node != NULL)
   {
     // Set tf pose
-    tf::Vector3 origin(node->x, node->y, 0);
+    tf::Vector3 origin(node->x, node->y, 0.0);
     tf::Pose tf_pose;
     tf_pose.setOrigin(origin);
     tf_pose.setRotation(tf::createQuaternionFromYaw(node->theta));
@@ -506,6 +509,14 @@ void AstarSearch::setPath(const SimpleNode& goal)
     geometry_msgs::PoseStamped ros_pose;
     tf::poseTFToMsg(tf_pose, ros_pose.pose);
     ros_pose.header = header;
+    if (node->back)
+    {
+      ros_pose.pose.position.z = -1.0;
+    }
+    else
+    {
+      ros_pose.pose.position.z = 1.0;
+    }
     path_.poses.push_back(ros_pose);
 
     // To the next node

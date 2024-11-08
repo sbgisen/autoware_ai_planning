@@ -16,6 +16,7 @@
 
 #include "waypoint_planner/astar_avoid/astar_avoid.h"
 #include "amathutils_lib/amathutils.hpp"
+#include "libwaypoint_follower/libwaypoint_follower.h"
 
 AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
 {
@@ -23,6 +24,7 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<double>("update_rate", update_rate_, 10.0);
 
   private_nh_.param<bool>("enable_avoidance", enable_avoidance_, false);
+  private_nh_.param<bool>("use_back", use_back_, true);
   private_nh_.param<double>("avoid_waypoints_velocity", avoid_waypoints_velocity_, 10.0);
   private_nh_.param<double>("avoid_start_velocity", avoid_start_velocity_, 5.0);
   private_nh_.param<double>("replan_interval", replan_interval_, 2.0);
@@ -171,7 +173,10 @@ void AstarAvoid::run()
       start_plan_time = ros::WallTime::now();
       if (select_way_ == AstarAvoid::STATE::AVOIDING)
       {
-        ROS_INFO("Found obstacle while AVOIDING -> replanning");
+        ROS_INFO("Found obstacle while AVOIDING -> STOPPING");
+        base_waypoint_index_ = closest_waypoint_index_;
+        select_way_ = AstarAvoid::STATE::RELAYING;
+        state_ = AstarAvoid::STATE::STOPPING;
       }
       if (planAvoidWaypoints(avoid_finish_index_))
       {
@@ -182,6 +187,8 @@ void AstarAvoid::run()
       else
       {
         ROS_INFO("PLANNING -> STOPPING, Cannot find path");
+        base_waypoint_index_ = closest_waypoint_index_;
+        select_way_ = AstarAvoid::STATE::RELAYING;
         state_ = AstarAvoid::STATE::STOPPING;
       }
     }
@@ -279,7 +286,7 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
   std::vector<geometry_msgs::Pose> goal_poses;
   std::vector<int> goal_indices;
 
-  for (int i = search_waypoints_delta_; i < static_cast<int>(search_waypoints_size_); i += search_waypoints_delta_)
+  for (int i = closest_search_size_; i < static_cast<int>(search_waypoints_size_); i += search_waypoints_delta_)
   {
     // update goal index
     // Note: obstacle_waypoint_index_ is supposed to be relative to base_waypoint_index_.
@@ -352,27 +359,56 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
 void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index,
                                      int& end_of_avoid_index)
 {
-  if (start_index == -1 || goal_index == -1)
+  int start_index_in = start_index;
+  if (goal_index == -1 || goal_index < start_index)
   {
     return;
+  }
+  else if (start_index == -1)
+  {
+    start_index_in = 0;
   }
 
   // add waypoints before start index
   avoid_waypoints_.waypoints.clear();
-  for (int i = 0; i < start_index; ++i)
+  for (int i = 0; i < start_index_in; ++i)
   {
+    // ROS_INFO("[avoid_waypoints_(1)]x:%lf, y:%lf, index:%d", base_waypoints_.waypoints.at(i).pose.pose.position.x,
+    //          base_waypoints_.waypoints.at(i).pose.pose.position.y, i);
     avoid_waypoints_.waypoints.push_back(base_waypoints_.waypoints.at(i));
   }
 
   // set waypoints for avoiding
-  for (const auto& pose : path.poses)
+  if (use_back_)
   {
-    autoware_msgs::Waypoint wp;
-    wp.pose.header = base_waypoints_.header;
-    wp.pose.pose = transformPose(pose.pose, getTransform(base_waypoints_.header.frame_id, pose.header.frame_id));
-    wp.pose.pose.position.z = current_pose_global_.pose.position.z;  // height = const
-    wp.twist.twist.linear.x = avoid_waypoints_velocity_ / 3.6;       // velocity = const
-    avoid_waypoints_.waypoints.push_back(wp);
+    int direction = 1;
+    for (int i = 0; i < path.poses.size(); ++i)
+    {
+      autoware_msgs::Waypoint wp;
+      wp.pose.header = base_waypoints_.header;
+      geometry_msgs::PoseStamped next_pose = path.poses.at(i);
+      // if the next_pose.pose.position.z value is smaller than 0, it means that the path is backward
+      direction = (next_pose.pose.position.z < 0) ? -1 : 1;
+      next_pose.pose.position.z = 0;
+      wp.pose.pose =
+          transformPose(next_pose.pose, getTransform(base_waypoints_.header.frame_id, next_pose.header.frame_id));
+      wp.pose.pose.position.z = current_pose_global_.pose.position.z;         // height = const
+      wp.twist.twist.linear.x = direction * avoid_waypoints_velocity_ / 3.6;  // velocity = const
+      // ROS_INFO("[avoid_waypoints_(2)]x:%lf, y:%lf, index:%d", wp.pose.pose.position.x, wp.pose.pose.position.y, i);
+      avoid_waypoints_.waypoints.push_back(wp);
+    }
+  }
+  else
+  {
+    for (const auto& pose : path.poses)
+    {
+      autoware_msgs::Waypoint wp;
+      wp.pose.header = base_waypoints_.header;
+      wp.pose.pose = transformPose(pose.pose, getTransform(base_waypoints_.header.frame_id, pose.header.frame_id));
+      wp.pose.pose.position.z = current_pose_global_.pose.position.z;  // height = const
+      wp.twist.twist.linear.x = avoid_waypoints_velocity_ / 3.6;       // velocity = const
+      avoid_waypoints_.waypoints.push_back(wp);
+    }
   }
 
   // smoothing connection point ( only deceleration )
@@ -397,11 +433,13 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
   // add waypoints after goal index
   for (int i = goal_index; i < static_cast<int>(base_waypoints_.waypoints.size()); ++i)
   {
+    // ROS_INFO("[avoid_waypoints_(3)]x:%lf, y:%lf, index:%d", base_waypoints_.waypoints.at(i).pose.pose.position.x,
+    //          base_waypoints_.waypoints.at(i).pose.pose.position.y, i);
     avoid_waypoints_.waypoints.push_back(base_waypoints_.waypoints.at(i));
   }
 
   // update index for merged waypoints
-  end_of_avoid_index = start_index + path.poses.size();
+  end_of_avoid_index = start_index_in + path.poses.size();
 }
 
 void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
@@ -421,8 +459,7 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   }
 
   // Update the current point in the selected lane.
-  next_index =
-      updateClosestWaypoint(current_waypoints_, current_index, current_pose_global_.pose, closest_search_size_);
+  next_index = updateCurrentIndex(current_waypoints_, current_pose_global_.pose, current_index);
 
   if (next_index == -1)
   {
@@ -435,11 +472,14 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   autoware_msgs::Lane safety_waypoints;
   safety_waypoints.header = current_waypoints_.header;
   safety_waypoints.increment = current_waypoints_.increment;
-
+  // ROS_INFO("[AstarAvoid::publishWaypoints] next_index: %d ->  last: %d", next_index,
+  //          static_cast<int>(current_waypoints_.waypoints.size()));
   for (int i = next_index;
        i < next_index + safety_waypoints_size_ && i < static_cast<int>(current_waypoints_.waypoints.size()); ++i)
   {
     safety_waypoints.waypoints.push_back(current_waypoints_.waypoints[i]);
+    // ROS_INFO("x:%lf, y:%lf, index:%d", current_waypoints_.waypoints[i].pose.pose.position.x,
+    //          current_waypoints_.waypoints[i].pose.pose.position.y, i);
   }
 
   if (!safety_waypoints.waypoints.empty())
@@ -482,46 +522,4 @@ tf::Transform AstarAvoid::getTransform(const std::string& from, const std::strin
     ROS_ERROR("%s", ex.what());
   }
   return stf;
-}
-
-int AstarAvoid::updateClosestWaypoint(const autoware_msgs::Lane& waypoints, const int previous_index,
-                                      const geometry_msgs::Pose& pose, const int& search_size)
-{
-  int next_index = previous_index;
-  // search in all waypoints if lane_select judges you're not on waypoints
-  if (previous_index == -1)
-  {
-    ROS_WARN("[AstarAvoid::updateClosestWaypoint] previous_index == -1, -> STOPPING");
-    state_ = AstarAvoid::STATE::STOPPING;
-    select_way_ = AstarAvoid::STATE::RELAYING;
-    next_index = closest_waypoint_index_;
-    base_waypoint_index_ = closest_waypoint_index_;
-    avoid_waypoint_index_ = closest_waypoint_index_;
-  }
-  else
-  {
-    // search within a limited area around previous_index found in the previous loop.
-    const int start_index = std::max(0, previous_index - search_size / 2);
-    const int end_index = std::min(start_index + search_size, static_cast<int>(waypoints.waypoints.size()));
-
-    // consists of search_size/2 waypoints before and after the vehicle.
-    autoware_msgs::Lane local_waypoints;
-    local_waypoints.waypoints = std::vector<autoware_msgs::Waypoint>(waypoints.waypoints.begin() + start_index,
-                                                                     waypoints.waypoints.begin() + end_index);
-    int closest_local_index = getClosestIndex(local_waypoints, pose);
-    if (closest_local_index != -1)
-    {
-      next_index = start_index + closest_local_index;
-    }
-    else
-    {
-      ROS_WARN("[AstarAvoid::updateClosestWaypoint] getClosestIndex failed, -> RELAYING");
-      state_ = AstarAvoid::STATE::RELAYING;
-      select_way_ = AstarAvoid::STATE::RELAYING;
-      next_index = closest_waypoint_index_;
-      base_waypoint_index_ = closest_waypoint_index_;
-      avoid_waypoint_index_ = closest_waypoint_index_;
-    }
-  }
-  return next_index;
 }
