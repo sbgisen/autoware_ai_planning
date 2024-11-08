@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <cmath>
 #include <vector>
 #include <string>
 
@@ -44,6 +45,7 @@ PurePursuitNode::PurePursuitNode()
   health_checker_ptr_->ENABLE();
   // initialize for PurePursuit
   pp_.setLinearInterpolationParameter(is_linear_interpolation_);
+  pp_.setUseBackward(use_back_);
 }
 
 void PurePursuitNode::initForROS()
@@ -52,6 +54,7 @@ void PurePursuitNode::initForROS()
   std::string out_twist, out_ctrl_cmd;
   private_nh_.param("velocity_source", velocity_source_, 0);
   private_nh_.param("is_linear_interpolation", is_linear_interpolation_, true);
+  private_nh_.param("use_back", use_back_, true);
   private_nh_.param("add_virtual_end_waypoints", add_virtual_end_waypoints_, false);
   private_nh_.param("const_lookahead_distance", const_lookahead_distance_, 4.0);
   private_nh_.param("const_velocity", const_velocity_, 5.0);
@@ -72,8 +75,7 @@ void PurePursuitNode::initForROS()
   if (private_nh_.hasParam("publishes_for_steering_robot"))
   {
     bool publishes_for_steering_robot;
-    private_nh_.param(
-      "publishes_for_steering_robot", publishes_for_steering_robot, false);
+    private_nh_.param("publishes_for_steering_robot", publishes_for_steering_robot, false);
     if (publishes_for_steering_robot)
     {
       output_interface_ = "ctrl_cmd";
@@ -85,12 +87,10 @@ void PurePursuitNode::initForROS()
   }
   else
   {
-    private_nh_.param(
-      "output_interface", output_interface_, std::string("all"));
+    private_nh_.param("output_interface", output_interface_, std::string("all"));
   }
 
-  if (output_interface_ != "twist" && output_interface_ != "ctrl_cmd" &&
-      output_interface_ != "all")
+  if (output_interface_ != "twist" && output_interface_ != "ctrl_cmd" && output_interface_ != "all")
   {
     ROS_ERROR("Control command interface type is not valid");
     ros::shutdown();
@@ -128,17 +128,17 @@ void PurePursuitNode::run()
     {
       if (!is_pose_set_)
       {
-        ROS_WARN_THROTTLE(5, "Waiting for current_pose topic ...");
+        ROS_INFO_THROTTLE(5, "Waiting for current_pose topic ...");
       }
       if (!is_waypoint_set_)
       {
-        ROS_WARN_THROTTLE(5, "Waiting for final_waypoints topic ...");
+        ROS_INFO_THROTTLE(5, "Waiting for final_waypoints topic ...");
       }
       if (!is_velocity_set_)
       {
-        ROS_WARN_THROTTLE(5, "Waiting for current_velocity topic ...");
+        ROS_INFO_THROTTLE(5, "Waiting for current_velocity topic ...");
       }
-      // publishControlCommands(false, 0);
+      publishControlCommands(false, 0, 0);
       loop_rate.sleep();
       continue;
     }
@@ -147,9 +147,10 @@ void PurePursuitNode::run()
     pp_.setMinimumLookaheadDistance(minimum_lookahead_distance_);
 
     double kappa = 0;
-    bool can_get_curvature = pp_.canGetCurvature(&kappa);
+    double cmd_velocity = 0;
+    bool can_get_curvature = pp_.canGetCurvature(kappa, cmd_velocity);
 
-    publishControlCommands(can_get_curvature, kappa);
+    publishControlCommands(can_get_curvature, kappa, cmd_velocity);
     health_checker_ptr_->NODE_ACTIVATE();
     health_checker_ptr_->CHECK_RATE("topic_rate_vehicle_cmd_slow", 8, 5, 1, "topic vehicle_cmd publish rate slow.");
     // for visualization with Rviz
@@ -171,20 +172,21 @@ void PurePursuitNode::run()
   }
 }
 
-void PurePursuitNode::publishControlCommands(const bool& can_get_curvature, const double& kappa) const
+void PurePursuitNode::publishControlCommands(const bool& can_get_curvature, const double& kappa,
+                                             const double& velocity) const
 {
   if (output_interface_ == "twist")
   {
-    publishTwistStamped(can_get_curvature, kappa);
+    publishTwistStamped(can_get_curvature, kappa, velocity);
   }
   else if (output_interface_ == "ctrl_cmd")
   {
-    publishCtrlCmdStamped(can_get_curvature, kappa);
+    publishCtrlCmdStamped(can_get_curvature, kappa, velocity);
   }
   else if (output_interface_ == "all")
   {
-    publishTwistStamped(can_get_curvature, kappa);
-    publishCtrlCmdStamped(can_get_curvature, kappa);
+    publishTwistStamped(can_get_curvature, kappa, velocity);
+    publishCtrlCmdStamped(can_get_curvature, kappa, velocity);
   }
   else
   {
@@ -192,21 +194,23 @@ void PurePursuitNode::publishControlCommands(const bool& can_get_curvature, cons
   }
 }
 
-void PurePursuitNode::publishTwistStamped(const bool& can_get_curvature, const double& kappa) const
+void PurePursuitNode::publishTwistStamped(const bool& can_get_curvature, const double& kappa,
+                                          const double& velocity) const
 {
   geometry_msgs::TwistStamped ts;
   ts.header.stamp = ros::Time::now();
-  ts.twist.linear.x = can_get_curvature ? computeCommandVelocity() : 0;
-  ts.twist.angular.z = can_get_curvature ? kappa * ts.twist.linear.x : 0;
+  ts.twist.linear.x = can_get_curvature ? velocity : 0;
+  ts.twist.angular.z = can_get_curvature ? kappa * fabs(velocity) : 0;
   pub1_.publish(ts);
 }
 
-void PurePursuitNode::publishCtrlCmdStamped(const bool& can_get_curvature, const double& kappa) const
+void PurePursuitNode::publishCtrlCmdStamped(const bool& can_get_curvature, const double& kappa,
+                                            const double& velocity) const
 {
   autoware_msgs::ControlCommandStamped ccs;
   ccs.header.stamp = ros::Time::now();
-  ccs.cmd.linear_velocity = can_get_curvature ? computeCommandVelocity() : 0;
-  ccs.cmd.linear_acceleration = can_get_curvature ? computeCommandAccel() : 0;
+  ccs.cmd.linear_velocity = can_get_curvature ? velocity : 0;
+  ccs.cmd.linear_acceleration = can_get_curvature ? velocity : 0;
   ccs.cmd.steering_angle = can_get_curvature ? convertCurvatureToSteeringAngle(wheel_base_, kappa) : 0;
   pub2_.publish(ccs);
 }
@@ -347,7 +351,24 @@ void PurePursuitNode::callbackFromCurrentVelocity(const geometry_msgs::TwistStam
 
 void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& msg)
 {
-  command_linear_velocity_ = (!msg->waypoints.empty()) ? msg->waypoints.at(0).twist.twist.linear.x : 0;
+  command_linear_velocity_ = 0;
+  if (!msg->waypoints.empty())
+  {
+    command_linear_velocity_ = msg->waypoints.at(0).twist.twist.linear.x;
+    if (msg->waypoints.size() > 1)
+    {
+      command_linear_velocity_ = msg->waypoints.at(1).twist.twist.linear.x;
+    }
+  }
+  else
+  {
+    ROS_WARN("Received empty waypoints");
+    command_linear_velocity_ = 0;
+    is_waypoint_set_ = false;
+    return;
+  }
+
+  // 仮想エンドウェイポイントの追加処理
   if (add_virtual_end_waypoints_)
   {
     const LaneDirection solved_dir = getLaneDirection(*msg);
@@ -362,8 +383,8 @@ void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& m
   {
     pp_.setCurrentWaypoints(msg->waypoints);
   }
+
   is_waypoint_set_ = true;
-  // target_waypoints_time_ = msg->header.stamp;
   target_waypoints_time_ = ros::Time::now();
 }
 

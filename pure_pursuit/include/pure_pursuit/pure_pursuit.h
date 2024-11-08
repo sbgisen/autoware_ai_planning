@@ -64,6 +64,11 @@ public:
     is_linear_interpolation_ = param;
   }
 
+  void setUseBackward(bool use_back)
+  {
+    use_back_ = use_back;
+  }
+
   // for debug on ROS
   geometry_msgs::Point getPoseOfNextWaypoint() const
   {
@@ -94,16 +99,20 @@ public:
     return minimum_lookahead_distance_;
   }
   // processing
-  bool canGetCurvature(double* output_kappa);
+  bool canGetCurvature(double& output_kappa, double& output_velocity);
+  bool getCommandVelocity(double& output_velocity);
 
 private:
   // constant
   static constexpr double RADIUS_MAX_ = 9e10;
-  static constexpr double KAPPA_MIN_ = 1.0 / 9e10;
+  static constexpr double RADIUS_MIN_ = 0.3;
+  static constexpr double RECOVERY_VEL = 0.2;
 
   // variables
   bool is_linear_interpolation_{ false };
-  int next_waypoint_number_{ -1 };
+  bool use_back_{ false };
+  int target_waypoint_index_{ -1 };
+  int current_waypoint_index_{ -1 };
   double lookahead_distance_{ 0.0 };
   double minimum_lookahead_distance_{ 6.0 };
   double current_linear_velocity_{ 0.0 };
@@ -114,7 +123,8 @@ private:
   // functions
   double calcCurvature(const geometry_msgs::Point& target) const;
   bool interpolateNextTarget(int next_waypoint, geometry_msgs::Point* next_target) const;
-  void getNextWaypoint();
+  int getNextWaypoint(const autoware_msgs::Lane& current_path, geometry_msgs::Pose current_pose, int current_index,
+                      double lookahead_distance);
 };
 }  // namespace waypoint_follower
 
