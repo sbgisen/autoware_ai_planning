@@ -1,12 +1,12 @@
 /*
  *  trajectory_generator.cpp
- *  Navigation via Cubic Spline Generation 
+ *  Navigation via Cubic Spline Generation
  *
  *  Created by Matthew O'Kelly on 7/17/15.
  *  Copyright (c) 2015 Matthew O'Kelly. All rights reserved.
  *  mokelly@seas.upenn.edu
- *  
-*/
+ *
+ */
 
 /*
  *  Redistribution and use in source and binary forms, with or without
@@ -34,7 +34,7 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
-*/
+ */
 
 #include <ros/ros.h>
 #include <std_msgs/String.h>
@@ -101,6 +101,7 @@ static double g_look_ahead_threshold_calc_ratio = 2.0;
 static double g_minimum_look_ahead_threshold = 6.0; // the next waypoint must be outside of this threshold.
 
 static WayPoints g_current_waypoints;
+static bool g_use_back = true;
 
 static void ConfigCallback(const autoware_config_msgs::ConfigWaypointFollowerConstPtr &config)
 {
@@ -185,26 +186,27 @@ static void canInfoCallback(const autoware_can_msgs::CANInfoConstPtr &msg)
 }
 */
 
-static int getNextWaypoint(int closest_waypoint)
+static int updateTargetIndex(int current_index)
 {
   // if waypoints are not given, do nothing.
-  if (g_current_waypoints.getSize() == 0 || closest_waypoint < 0)
+  if (g_current_waypoints.getSize() == 0 || current_index < 0)
     return -1;
 
-  double lookahead_threshold = getLookAheadThreshold(closest_waypoint);
+  double lookahead_threshold = getLookAheadThreshold(current_index);
 
-  //ROS_INFO_STREAM("threshold = " << lookahead_threshold);
+  // ROS_INFO_STREAM("threshold = " << lookahead_threshold);
   // look for the next waypoint.
-  for (int i = closest_waypoint; i < g_current_waypoints.getSize(); i++)
+  for (int i = current_index; i < g_current_waypoints.getSize(); i++)
   {
-    //skip waypoint behind vehicle
-    if (calcRelativeCoordinate(g_current_waypoints.getCurrentWaypoints().waypoints[i].pose.pose.position,
-        g_current_pose.pose).x < 0)
+    // skip waypoint behind vehicle
+    if (!g_use_back && calcRelativeCoordinate(g_current_waypoints.getCurrentWaypoints().waypoints[i].pose.pose.position,
+                                              g_current_pose.pose)
+                               .x < 0)
       continue;
 
     // if there exists an effective waypoint
     if (getPlaneDistance(g_current_waypoints.getCurrentWaypoints().waypoints[i].pose.pose.position,
-        g_current_pose.pose.position) > lookahead_threshold)
+                         g_current_pose.pose.position) > lookahead_threshold)
       return i;
   }
 
@@ -237,7 +239,7 @@ static void displayNextWaypoint(int i)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// M. O'Kelly code begins here, 
+// M. O'Kelly code begins here,
 // Suggested: need to clean up unused functions above... don't have time.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -309,7 +311,7 @@ static union State computeWaypointGoal(int next_waypoint)
 /////////////////////////////////////////////////////////////////
 static union State computeVeh(int old_time, double old_theta, int next_waypoint)
 {
-    union State l_veh;
+  union State l_veh;
 
     // Goal is computed relative to vehicle coordinate frame
     l_veh.sx=0.0;
@@ -516,7 +518,7 @@ int main(int argc, char **argv)
   // Set up ROS, TO DO: change to proper name (same with rest of the file)
   ros::init(argc, argv, "lattice_trajectory_gen");
 
-  // Create node handles 
+  // Create node handles
   ros::NodeHandle nh;
   ros::NodeHandle private_nh("~");
 
@@ -528,7 +530,7 @@ int main(int argc, char **argv)
   ROS_INFO_STREAM("prius_mode : " << g_prius_mode);
   ROS_INFO_STREAM("mkz_mode : " << g_mkz_mode);
 
-  // Publish the following topics: 
+  // Publish the following topics:
   g_vis_pub = nh.advertise<visualization_msgs::Marker>("next_waypoint_mark", 1);
   g_stat_pub = nh.advertise<std_msgs::Bool>("wf_stat", 0);
   // Publish the curvature information:
@@ -537,7 +539,7 @@ int main(int argc, char **argv)
   // Publish the trajectory visualization
   g_marker_pub = nh.advertise<visualization_msgs::Marker>("cubic_splines_viz", 10);
 
-  // Subscribe to the following topics: 
+  // Subscribe to the following topics:
   ros::Subscriber waypoint_subcscriber = nh.subscribe("final_waypoints", 1, WayPointCallback);
   ros::Subscriber current_pose_subscriber = nh.subscribe("current_pose", 1, currentPoseCallback);
   ros::Subscriber current_vel_subscriber = nh.subscribe("current_velocity", 1, currentVelCallback);
@@ -554,9 +556,9 @@ int main(int argc, char **argv)
 /*  else if(_mkz_mode)
     {
     ROS_INFO_STREAM("********************mkz_mode ON");
-    sub_steering = nh.subscribe("/vehicle/steering_report", 1, mkzInfoCallback);
-    }
-  */
+      sub_steering = nh.subscribe("/vehicle/steering_report", 1, mkzInfoCallback);
+      }
+    */
 
   // Local variable for geometry messages
   geometry_msgs::TwistStamped twist;
@@ -579,6 +581,7 @@ int main(int argc, char **argv)
   bool initFlag = FALSE;
   union Spline prev_curvature;
   union State veh_fmm;
+  int current_index = -1;
 
   // Here we go....
   while (ros::ok())
@@ -596,29 +599,27 @@ int main(int argc, char **argv)
     }
 
     // Get the closest waypoinmt
-    int closest_waypoint =
+    current_index =
         updateCurrentIndex(g_current_waypoints.getCurrentWaypoints(), g_current_pose.pose, current_index);
-    ROS_INFO_STREAM("closest waypoint = " << closest_waypoint);
-    if (closest_waypoint > 0 && closest_waypoint < g_current_waypoints.getSize() && g_current_waypoints.getSize() > 0)
+    if (current_index > 0 && current_index < g_current_waypoints.getSize() && g_current_waypoints.getSize() > 0)
     {
       // If the current  waypoint has a valid index
       // Return the next waypoint
-        int next_waypoint = getNextWaypoint(closest_waypoint);
-        ROS_INFO_STREAM("Next waypoint: "<<next_waypoint);
+      int target_index = updateTargetIndex(current_index);
 
-        // If the next waypoiont also has a valid index
-        if (next_waypoint > 0)
+      // If the next waypoiont also has a valid index
+      if (target_index > 0)
         {
           // Display and publish waypoint information 
-          displayNextWaypoint(next_waypoint);
+          displayNextWaypoint(target_index);
           _lf_stat.data = true;
           _stat_pub.publish(_lf_stat);
 
           // Determine the desired state of the vehicle at the next waypoint 
-          union State goal = computeWaypointGoal(next_waypoint);
+          union State goal = computeWaypointGoal(target_index);
           
           // Estimate the current state of the vehicle
-          union State veh = computeVeh(old_time, old_theta, next_waypoint);
+          union State veh = computeVeh(old_time, old_theta, target_index);
 
           if(initFlag==TRUE && prev_curvature.success==TRUE)
           {
@@ -630,7 +631,7 @@ int main(int argc, char **argv)
           union Spline curvature = initParams(veh, goal);
 
           // Generate a cubic spline (trajectory) for the vehicle to follow
-          curvature = waypointTrajectory(veh, goal, curvature, next_waypoint);
+          curvature = waypointTrajectory(veh, goal, curvature, target_index);
           prev_curvature = curvature;
           initFlag=TRUE;
 
@@ -693,7 +694,7 @@ int main(int argc, char **argv)
                   tempGoal.sy = tempGoal.sy + perturb[i-1];
 
                   // Compute new spline 
-                  extra= waypointTrajectory(veh, tempGoal, curvature, next_waypoint);
+                  extra= waypointTrajectory(veh, tempGoal, curvature, target_index);
 
                   // Display trajectory
                   if(veh.v>5.00)
