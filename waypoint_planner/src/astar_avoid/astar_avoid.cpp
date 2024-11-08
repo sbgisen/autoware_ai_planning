@@ -508,14 +508,14 @@ int AstarAvoid::updateClosestWaypoint(const autoware_msgs::Lane& waypoints, cons
     autoware_msgs::Lane local_waypoints;
     local_waypoints.waypoints = std::vector<autoware_msgs::Waypoint>(waypoints.waypoints.begin() + start_index,
                                                                      waypoints.waypoints.begin() + end_index);
-    int closest_local_index = getClosestWaypoint(local_waypoints, pose);
+    int closest_local_index = getClosestIndex(local_waypoints, pose);
     if (closest_local_index != -1)
     {
       next_index = start_index + closest_local_index;
     }
     else
     {
-      ROS_WARN("[AstarAvoid::updateClosestWaypoint] getClosestWaypoint failed, -> RELAYING");
+      ROS_WARN("[AstarAvoid::updateClosestWaypoint] getClosestIndex failed, -> RELAYING");
       state_ = AstarAvoid::STATE::RELAYING;
       select_way_ = AstarAvoid::STATE::RELAYING;
       next_index = closest_waypoint_index_;

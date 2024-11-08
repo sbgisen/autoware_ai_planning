@@ -188,7 +188,7 @@ static void canInfoCallback(const autoware_can_msgs::CANInfoConstPtr &msg)
 static int getNextWaypoint(int closest_waypoint)
 {
   // if waypoints are not given, do nothing.
-  if (g_current_waypoints.getSize() == 0)
+  if (g_current_waypoints.getSize() == 0 || closest_waypoint < 0)
     return -1;
 
   double lookahead_threshold = getLookAheadThreshold(closest_waypoint);
@@ -596,13 +596,13 @@ int main(int argc, char **argv)
     }
 
     // Get the closest waypoinmt
-    int closest_waypoint = getClosestWaypoint(g_current_waypoints.getCurrentWaypoints(), g_current_pose.pose);
+    int closest_waypoint =
+        updateCurrentIndex(g_current_waypoints.getCurrentWaypoints(), g_current_pose.pose, current_index);
     ROS_INFO_STREAM("closest waypoint = " << closest_waypoint);
-
+    if (closest_waypoint > 0 && closest_waypoint < g_current_waypoints.getSize() && g_current_waypoints.getSize() > 0)
+    {
       // If the current  waypoint has a valid index
-      if (closest_waypoint > 0)
-      {
-        // Return the next waypoint
+      // Return the next waypoint
         int next_waypoint = getNextWaypoint(closest_waypoint);
         ROS_INFO_STREAM("Next waypoint: "<<next_waypoint);
 
