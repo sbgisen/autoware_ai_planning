@@ -445,41 +445,38 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
 void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
 {
   // select waypoints
-  autoware_msgs::Lane current_waypoints_;
-  int current_index, next_index;
+  autoware_msgs::Lane current_waypoints = base_waypoints_;
+  int current_index = base_waypoint_index_;
   if (select_way_ == AstarAvoid::STATE::AVOIDING)
   {
-    current_waypoints_ = avoid_waypoints_;
+    current_waypoints = avoid_waypoints_;
     current_index = avoid_waypoint_index_;
-  }
-  else
-  {
-    current_waypoints_ = base_waypoints_;
-    current_index = base_waypoint_index_;
   }
 
   // Update the current point in the selected lane.
-  next_index = updateCurrentIndex(current_waypoints_, current_pose_global_.pose, current_index);
-
+  int next_index = updateCurrentIndex(current_waypoints, current_pose_global_.pose, current_index);
   if (next_index == -1)
   {
     avoid_waypoint_index_ = -1;
     base_waypoint_index_ = -1;
+    select_way_ = AstarAvoid::STATE::RELAYING;
+    current_waypoints = base_waypoints_;
+    current_index = -1;
     return;
   }
 
   // Create local path starting at closest global waypoint
   autoware_msgs::Lane safety_waypoints;
-  safety_waypoints.header = current_waypoints_.header;
-  safety_waypoints.increment = current_waypoints_.increment;
+  safety_waypoints.header = current_waypoints.header;
+  safety_waypoints.increment = current_waypoints.increment;
   // ROS_INFO("[AstarAvoid::publishWaypoints] next_index: %d ->  last: %d", next_index,
-  //          static_cast<int>(current_waypoints_.waypoints.size()));
+  //          static_cast<int>(current_waypoints.waypoints.size()));
   for (int i = next_index;
-       i < next_index + safety_waypoints_size_ && i < static_cast<int>(current_waypoints_.waypoints.size()); ++i)
+       i < next_index + safety_waypoints_size_ && i < static_cast<int>(current_waypoints.waypoints.size()); ++i)
   {
-    safety_waypoints.waypoints.push_back(current_waypoints_.waypoints[i]);
-    // ROS_INFO("x:%lf, y:%lf, index:%d", current_waypoints_.waypoints[i].pose.pose.position.x,
-    //          current_waypoints_.waypoints[i].pose.pose.position.y, i);
+    safety_waypoints.waypoints.push_back(current_waypoints.waypoints[i]);
+    // ROS_INFO("x:%lf, y:%lf, index:%d", current_waypoints.waypoints[i].pose.pose.position.x,
+    //          current_waypoints.waypoints[i].pose.pose.position.y, i);
   }
 
   if (!safety_waypoints.waypoints.empty())
