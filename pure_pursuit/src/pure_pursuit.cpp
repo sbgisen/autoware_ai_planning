@@ -211,17 +211,24 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
     // Recover by setting the curvature to the maximum value and the velocity to a small value
     geometry_msgs::Pose target_pose = current_waypoints_.at(target_waypoint_index_).pose.pose;
     geometry_msgs::Pose relative_target_pose = getRelativePose(current_pose_, target_pose);
-    if (relative_target_pose.position.y > 0)
+    if (recovery_rotate_direction_ == 0)
     {
-      output_kappa = 1.0 / RADIUS_MIN_;
-      output_velocity = RECOVERY_VEL;
+      if (relative_target_pose.position.y > 0)
+      {
+        recovery_rotate_direction_ = 1;
+      }
+      else
+      {
+        recovery_rotate_direction_ = -1;
+      }
     }
-    else
-    {
-      output_kappa = -1.0 / RADIUS_MIN_;
-      output_velocity = RECOVERY_VEL;
-    }
+    output_kappa = recovery_rotate_direction_ / RADIUS_MIN_;
+    output_velocity = RECOVERY_VEL;
     return true;
+  }
+  else
+  {
+    recovery_rotate_direction_ = 0;
   }
   output_velocity = target_velocity;
   next_target_position_ = current_waypoints_.at(target_waypoint_index_).pose.pose.position;
