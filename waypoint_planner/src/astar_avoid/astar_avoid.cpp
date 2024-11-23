@@ -198,7 +198,7 @@ void AstarAvoid::run()
       if (avoid_waypoint_index_ >= avoid_finish_index_)
       {
         ROS_INFO("AVOIDING -> RELAYING, Reached goal");
-        base_waypoint_index_ = base_finish_index_;
+        base_waypoint_index_ = closest_waypoint_index_;
         state_ = AstarAvoid::STATE::RELAYING;
         select_way_ = AstarAvoid::STATE::RELAYING;
       }
@@ -268,6 +268,7 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
 
   if (base_waypoint_index_ == -1)
   {
+    base_waypoint_index_ = closest_waypoint_index_;
     return false;
   }
 
