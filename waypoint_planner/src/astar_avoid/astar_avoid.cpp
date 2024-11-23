@@ -458,8 +458,9 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   if (next_index == -1)
   {
     avoid_waypoint_index_ = -1;
-    base_waypoint_index_ = -1;
+    base_waypoint_index_ = closest_waypoint_index_;
     select_way_ = AstarAvoid::STATE::RELAYING;
+    state_ = AstarAvoid::STATE::STOPPING;
     current_waypoints = base_waypoints_;
     current_index = -1;
     return;
@@ -483,28 +484,18 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   {
     safety_waypoints_pub_.publish(safety_waypoints);
   }
-
-  // Update index
-  if (select_way_ == AstarAvoid::STATE::AVOIDING)
-  {
-    avoid_waypoint_index_ = next_index;
-    // Update base_waypoint_index_ to match the amount of progress made by avoid_waypoint_index_.
-    if (avoid_finish_index_ != avoid_start_index_)
-    {
-      base_waypoint_index_ = avoid_start_index_ + (int)((avoid_waypoint_index_ - avoid_start_index_) *
-                                                        (base_finish_index_ - avoid_start_index_) /
-                                                        (avoid_finish_index_ - avoid_start_index_));
-    }
-    else
-    {
-      base_waypoint_index_ = avoid_waypoint_index_;
-    }
-  }
   else
   {
-    avoid_waypoint_index_ = next_index;
-    base_waypoint_index_ = next_index;
+    avoid_waypoint_index_ = -1;
+    base_waypoint_index_ = closest_waypoint_index_;
+    select_way_ = AstarAvoid::STATE::RELAYING;
+    state_ = AstarAvoid::STATE::STOPPING;
+    current_waypoints = base_waypoints_;
+    current_index = -1;
   }
+
+  avoid_waypoint_index_ = next_index;
+  base_waypoint_index_ = closest_waypoint_index_;
 }
 
 tf::Transform AstarAvoid::getTransform(const std::string& from, const std::string& to)
