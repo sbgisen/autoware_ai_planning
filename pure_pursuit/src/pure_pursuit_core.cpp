@@ -55,6 +55,8 @@ void PurePursuitNode::initForROS()
   private_nh_.param("velocity_source", velocity_source_, 0);
   private_nh_.param("is_linear_interpolation", is_linear_interpolation_, true);
   private_nh_.param("use_back", use_back_, true);
+  private_nh_.param("accel_limit", accel_limit_, 1.0);
+  private_nh_.param("brake_limit", brake_limit_, 2.0);
   private_nh_.param("add_virtual_end_waypoints", add_virtual_end_waypoints_, false);
   private_nh_.param("const_lookahead_distance", const_lookahead_distance_, 4.0);
   private_nh_.param("const_velocity", const_velocity_, 5.0);
@@ -118,6 +120,7 @@ void PurePursuitNode::initForROS()
 
 void PurePursuitNode::run()
 {
+  double target_linear_velocity = 0;
   ros::Rate loop_rate(update_rate_);
   while (ros::ok())
   {
@@ -149,8 +152,10 @@ void PurePursuitNode::run()
     double kappa = 0;
     double cmd_velocity = 0;
     bool can_get_curvature = pp_.canGetCurvature(kappa, cmd_velocity);
+    target_linear_velocity =
+        limitAccelBrake(cmd_velocity, target_linear_velocity, 1.0 / update_rate_, accel_limit_, brake_limit_);
 
-    publishControlCommands(can_get_curvature, kappa, cmd_velocity);
+    publishControlCommands(can_get_curvature, kappa, target_linear_velocity);
     health_checker_ptr_->NODE_ACTIVATE();
     health_checker_ptr_->CHECK_RATE("topic_rate_vehicle_cmd_slow", 8, 5, 1, "topic vehicle_cmd publish rate slow.");
     // for visualization with Rviz
@@ -407,6 +412,29 @@ void PurePursuitNode::connectVirtualLastWaypoints(autoware_msgs::Lane* lane, Lan
     virtual_last_waypoint.pose.pose.position = calcAbsoluteCoordinate(virtual_last_point_rlt, pn);
     lane->waypoints.emplace_back(virtual_last_waypoint);
   }
+}
+
+double PurePursuitNode::limitAccelBrake(double target_vel, double prev_vel, double dt, double max_accel,
+                                        double max_brake)
+{
+  double accel_limit = max_accel;
+  double brake_limit = max_brake;
+  // ROS_WARN("target_vel: %f, prev_vel: %f", target_vel, prev_vel);
+  double vel_max = prev_vel + accel_limit * dt;
+  double vel_min = prev_vel - brake_limit * dt;
+  if (target_vel * prev_vel < 0)
+  {
+    vel_max = prev_vel + brake_limit * dt;
+    vel_min = prev_vel - brake_limit * dt;
+  }
+  else if (target_vel < 0)
+  {
+    vel_max = prev_vel + brake_limit * dt;
+    vel_min = prev_vel - accel_limit * dt;
+  }
+  // ROS_WARN("vel_max: %f, vel_min: %f", vel_max, vel_min);
+  double vel_out = std::max(vel_min, std::min(target_vel, vel_max));
+  return vel_out;
 }
 
 double convertCurvatureToSteeringAngle(const double& wheel_base, const double& kappa)
