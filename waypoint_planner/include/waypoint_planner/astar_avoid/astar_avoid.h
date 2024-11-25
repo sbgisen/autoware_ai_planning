@@ -90,15 +90,14 @@ private:
   // Not the same as the waypoint gid. This value can change suddenly if the
   // current_waypoints_ switches between base_waypoints_ and avoid_waypoints_.
   State select_way_;
-  int closest_waypoint_index_ = -1;
-  int avoid_waypoint_index_ = -1;
-  int avoid_start_index_ = -1;
-  int avoid_finish_index_ = -1;
-  int base_waypoint_index_ = -1;
-  int base_finish_index_ = -1;
+  int base_index_ = -1;
+  int avoid_index_ = -1;
+  int avoid_start_base_index_ = -1;
+  int avoid_path_size_ = -1;
+  int avoid_finish_base_index_ = -1;
 
   // Index of the obstacle relative to current_waypoint_index_.
-  int obstacle_waypoint_index_ = -1;
+  int obstacle_index_ = -1;
   nav_msgs::OccupancyGrid costmap_;
   autoware_msgs::Lane base_waypoints_;
   autoware_msgs::Lane avoid_waypoints_;
@@ -111,7 +110,7 @@ private:
   bool current_pose_initialized_ = false;
   bool current_velocity_initialized_ = false;
   bool base_waypoints_initialized_ = false;
-  bool closest_waypoint_initialized_ = false;
+  bool base_index_initialized_ = false;
 
   // functions, callback
   void costmapCallback(const nav_msgs::OccupancyGrid& msg);
