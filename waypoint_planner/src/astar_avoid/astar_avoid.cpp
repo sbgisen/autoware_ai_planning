@@ -172,22 +172,16 @@ void AstarAvoid::run()
     else if (state_ == AstarAvoid::STATE::PLANNING)
     {
       start_plan_time = ros::WallTime::now();
-      if (select_way_ == AstarAvoid::STATE::AVOIDING)
-      {
-        ROS_INFO("Found obstacle while AVOIDING -> STOPPING");
-        select_way_ = AstarAvoid::STATE::RELAYING;
-        state_ = AstarAvoid::STATE::STOPPING;
-      }
       if (planAvoidWaypoints(avoid_path_size_))
       {
         ROS_INFO("PLANNING -> AVOIDING, Found path");
         state_ = AstarAvoid::STATE::AVOIDING;
+        select_way_ = AstarAvoid::STATE::AVOIDING;
         start_avoid_time = ros::WallTime::now();
       }
       else
       {
         ROS_INFO("PLANNING -> STOPPING, Cannot find path");
-        select_way_ = AstarAvoid::STATE::RELAYING;
         state_ = AstarAvoid::STATE::STOPPING;
       }
     }
@@ -202,7 +196,6 @@ void AstarAvoid::run()
       }
       else
       {
-        select_way_ = AstarAvoid::STATE::AVOIDING;
         if (found_obstacle && avoid_velocity)
         {
           bool replan = ((ros::WallTime::now() - start_avoid_time).toSec() > replan_interval_);
@@ -266,6 +259,7 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
 
   if (base_index_ < 0 || base_index_ >= static_cast<int>(base_waypoints_.waypoints.size()))
   {
+    ROS_ERROR("Invalid base_index_ = %d", base_index_);
     return false;
   }
 
@@ -316,7 +310,8 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
 
   if (goal_poses.size() == 0)
   {
-    ROS_ERROR("Can't find goal...");
+    ROS_ERROR("Can't find goal. base_index_ = %d, obstacle_index_ = %d, stopline_ahead_num_ = %d, base_size = %lu",
+              base_index_, obstacle_index_, stopline_ahead_num_, base_waypoints_.waypoints.size());
     return false;
   }
   // initialize costmap for A* search
@@ -344,12 +339,15 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
     }
     else
     {
+      ROS_ERROR("Wrong path detected. goal_index = %d, waypoints size = %lu", goal_index,
+                avoid_waypoints_.waypoints.size());
       found_path = false;
     }
   }
-  astar_.reset();
 
-  ROS_ERROR("Can't find goal...");
+  ROS_ERROR("Can't find goal. Retry. base_index_ = %d, obstacle_index_ = %d, stopline_ahead_num_ = %d, base_size = %lu",
+            base_index_, obstacle_index_, stopline_ahead_num_, base_waypoints_.waypoints.size());
+  astar_.reset();
   return false;
 }
 
@@ -446,9 +444,9 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   int current_index;
   if (select_way_ == AstarAvoid::STATE::AVOIDING)
   {
-    current_waypoints = avoid_waypoints_;
-    avoid_index_ = updateCurrentIndex(current_waypoints, current_pose_global_.pose, avoid_index_);
+    avoid_index_ = updateCurrentIndex(avoid_waypoints_, current_pose_global_.pose, avoid_index_);
     current_index = avoid_index_;
+    current_waypoints = avoid_waypoints_;
   }
   else
   {

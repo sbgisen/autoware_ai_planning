@@ -100,7 +100,8 @@ public:
   }
   // processing
   bool canGetCurvature(double& output_kappa, double& output_velocity);
-  bool getCommandVelocity(double& output_velocity);
+  bool getCurrentCommandVelocity(double& output_velocity, autoware_msgs::Waypoint current_waypoint, int current_index,
+                                 int target_index, geometry_msgs::Pose current_pose);
 
 private:
   // constant
@@ -124,8 +125,8 @@ private:
   // functions
   double calcCurvature(const geometry_msgs::Point& target) const;
   bool interpolateNextTarget(int next_waypoint, geometry_msgs::Point* next_target) const;
-  int getNextWaypoint(const autoware_msgs::Lane& current_path, geometry_msgs::Pose current_pose, int current_index,
-                      double lookahead_distance);
+  int getTargetIndex(const autoware_msgs::Lane& current_path, geometry_msgs::Pose current_pose, int current_index,
+                     double lookahead_distance);
 };
 }  // namespace waypoint_follower
 

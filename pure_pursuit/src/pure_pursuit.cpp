@@ -16,6 +16,7 @@
 
 #include <pure_pursuit/pure_pursuit.h>
 #include <cmath>
+#include "libwaypoint_follower/libwaypoint_follower.h"
 #include "ros/console.h"
 
 namespace waypoint_follower
@@ -118,8 +119,8 @@ bool PurePursuit::interpolateNextTarget(int next_waypoint, geometry_msgs::Point*
   return found;
 }
 
-int PurePursuit::getNextWaypoint(const autoware_msgs::Lane& current_path, geometry_msgs::Pose current_pose,
-                                 int current_index, double lookahead_distance)
+int PurePursuit::getTargetIndex(const autoware_msgs::Lane& current_path, geometry_msgs::Pose current_pose,
+                                int current_index, double lookahead_distance)
 {
   int target_index = -1;
   const int path_size = static_cast<int>(current_path.waypoints.size());
@@ -148,7 +149,7 @@ int PurePursuit::getNextWaypoint(const autoware_msgs::Lane& current_path, geomet
     double next_velocity =
         (i + 1 < path_size) ? current_path.waypoints.at(i + 1).twist.twist.linear.x : current_velocity;
 
-    if ((current_velocity > 0 && next_velocity < 0) || (current_velocity < 0 && next_velocity > 0))
+    if (current_velocity * next_velocity < 0)
     {
       // If the velocity changes its sign, the current waypoint is the next waypoint to avoid the case where the vehicle
       // is at the switchback point
@@ -180,7 +181,7 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   const int path_size = static_cast<int>(current_waypoints_.size());
 
   // Get the updated indices
-  current_waypoint_index_ = updateCurrentIndex(current_lane, current_pose_, current_waypoint_index_);
+  current_waypoint_index_ = 0;  // updateCurrentIndex(current_lane, current_pose_, current_waypoint_index_);
 
   if (current_waypoint_index_ < 0 || current_waypoint_index_ > path_size - 1)
   {
@@ -195,7 +196,7 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
     return true;
   }
 
-  target_waypoint_index_ = getNextWaypoint(current_lane, current_pose_, current_waypoint_index_, lookahead_distance_);
+  target_waypoint_index_ = getTargetIndex(current_lane, current_pose_, current_waypoint_index_, lookahead_distance_);
   if (target_waypoint_index_ < 0 || target_waypoint_index_ >= path_size)
   {
     // Target waypoint index is out of range
@@ -204,8 +205,8 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
 
   // Check target velocity
   double target_velocity = 0;
-  bool is_forward = getCommandVelocity(target_velocity);
-  if (!is_forward)
+  bool target_velocity_is_valid = getCurrentCommandVelocity(target_velocity);
+  if (!target_velocity_is_valid)
   {
     // Target velocity is wrong
     // Recover by setting the curvature to the maximum value and the velocity to a small value
@@ -241,24 +242,12 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
     // Create a virtual target based on the current target
     // Get normalized direction vector
     tf::Vector3 direction;
-    if (target_waypoint_index_ > 0)
-    {
-      direction = tf::Vector3(
-          next_target_position_.x - current_waypoints_.at(target_waypoint_index_ - 1).pose.pose.position.x,
-          next_target_position_.y - current_waypoints_.at(target_waypoint_index_ - 1).pose.pose.position.y, 0.0);
-      direction.normalize();
-      // Scale the direction vector
-      next_target_position_.x += additional_distance * direction.x();
-      next_target_position_.y += additional_distance * direction.y();
-    }
-    else
-    {
-      double yaw = tf::getYaw(current_pose_.orientation);
-      double vel_direction = target_velocity > 0 ? 1.0 : -1.0;
-      direction = tf::Vector3(vel_direction * cos(yaw), vel_direction * sin(yaw), 0.0);
-      next_target_position_.x += additional_distance * direction.x();
-      next_target_position_.y += additional_distance * direction.y();
-    }
+    double yaw = getYawFromPath(current_lane, target_waypoint_index_);
+    double target_waypoint_velocity = current_waypoints_.at(target_waypoint_index_).twist.twist.linear.x;
+    double vel_direction = target_waypoint_velocity > 0 ? 1.0 : -1.0;
+    direction = tf::Vector3(vel_direction * cos(yaw), vel_direction * sin(yaw), 0.0);
+    next_target_position_.x += additional_distance * direction.x();
+    next_target_position_.y += additional_distance * direction.y();
   }
   output_kappa = calcCurvature(next_target_position_);
 
@@ -282,9 +271,10 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   return true;
 }
 
-bool PurePursuit::getCommandVelocity(double& output_velocity)
+bool PurePursuit::getCurrentCommandVelocity(double& output_velocity, autoware_msgs::Lane current_waypoint,
+                                            int current_index, int target_index, geometry_msgs::Pose current_pose)
 {
-  if (current_waypoint_index_ < 0 || current_waypoint_index_ >= static_cast<int>(current_waypoints_.size()))
+  if (current_index < 0 || current_index >= static_cast<int>(current_waypoints_.size()))
   {
     // ROS_WARN("Current waypoint index is out of range");
     output_velocity = 0;
