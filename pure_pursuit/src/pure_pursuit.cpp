@@ -145,6 +145,10 @@ int PurePursuit::getTargetIndex(const autoware_msgs::Lane& current_path, geometr
   {
     double current_velocity = current_path.waypoints.at(i).twist.twist.linear.x;
     double next_velocity = current_path.waypoints.at(i + 1).twist.twist.linear.x;
+    geometry_msgs::Pose target_pose = current_path.waypoints.at(i).pose.pose;
+    target_pose.orientation = getQuaternionFromYaw(getYawFromPath(current_path, i));
+    geometry_msgs::Pose currennt2target_relative = getRelativePose(current_pose, target_pose);
+    double target_yaw_relative = tf::getYaw(currennt2target_relative.orientation);
 
     if (current_velocity * next_velocity < 0)
     {
@@ -228,14 +232,20 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   {
     // No valid points beyond lookahead distance -> Creating virtual target
     double additional_distance =
-        minimum_lookahead_distance_ - getPlaneDistance(next_target_position_, current_pose_.position);
+        minimum_lookahead_distance_ -
+        std::max(minimum_lookahead_distance_, getPlaneDistance(next_target_position_, current_pose_.position));
     // Create a virtual target based on the current target
     // Get normalized direction vector
-    tf::Vector3 direction;
+    geometry_msgs::Pose target_pose = current_waypoints_.at(target_waypoint_index_).pose.pose;
+    geometry_msgs::Pose relative_target_pose = getRelativePose(current_pose_, target_pose);
+    double vel_sign = relative_target_pose.position.x > 0 ? 1.0 : -1.0;
     double yaw = getYawFromPath(current_lane, target_waypoint_index_);
-    double target_waypoint_velocity = current_waypoints_.at(target_waypoint_index_).twist.twist.linear.x;
-    double vel_direction = target_waypoint_velocity > 0 ? 1.0 : -1.0;
-    direction = tf::Vector3(vel_direction * cos(yaw), vel_direction * sin(yaw), 0.0);
+    double relative_target_yaw = tf::getYaw(relative_target_pose.orientation);
+    if (fabs(relative_target_yaw) > M_PI * 0.5)
+    {
+      vel_sign *= -1.0;
+    }
+    tf::Vector3 direction = tf::Vector3(vel_sign * cos(yaw), vel_sign * sin(yaw), 0.0);
     next_target_position_.x += additional_distance * direction.x();
     next_target_position_.y += additional_distance * direction.y();
   }
