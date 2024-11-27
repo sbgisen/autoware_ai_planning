@@ -53,6 +53,7 @@ private:
   // ros
   ros::NodeHandle nh_, private_nh_;
   ros::Publisher safety_waypoints_pub_;
+  ros::Publisher debug_pub_;
   ros::Subscriber costmap_sub_;
   ros::Subscriber current_pose_sub_;
   ros::Subscriber current_velocity_sub_;

@@ -36,6 +36,7 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<double>("decel_limit", decel_limit_, 0.3);
 
   safety_waypoints_pub_ = nh_.advertise<autoware_msgs::Lane>("safety_waypoints", 1, true);
+  debug_pub_ = nh_.advertise<nav_msgs::Path>("debug", 1, true);
   costmap_sub_ = nh_.subscribe("costmap", 1, &AstarAvoid::costmapCallback, this);
   current_pose_sub_ = nh_.subscribe("current_pose", 1, &AstarAvoid::currentPoseCallback, this);
   current_velocity_sub_ = nh_.subscribe("current_velocity", 1, &AstarAvoid::currentVelocityCallback, this);
@@ -134,7 +135,7 @@ void AstarAvoid::run()
 
     // avoidance mode
     bool found_obstacle = (obstacle_index_ >= 0);
-    bool avoid_velocity = (current_velocity_.twist.linear.x < avoid_start_velocity_ / 3.6);
+    bool avoid_velocity = (fabs(current_velocity_.twist.linear.x) < avoid_start_velocity_ / 3.6);
 
     // update state
     if (state_ == AstarAvoid::STATE::RELAYING)
@@ -167,6 +168,7 @@ void AstarAvoid::run()
       {
         ROS_INFO("STOPPING -> PLANNING, Start A* planning");
         state_ = AstarAvoid::STATE::PLANNING;
+        select_way_ = AstarAvoid::STATE::RELAYING;
       }
     }
     else if (state_ == AstarAvoid::STATE::PLANNING)
@@ -183,16 +185,21 @@ void AstarAvoid::run()
       {
         ROS_INFO("PLANNING -> STOPPING, Cannot find path");
         state_ = AstarAvoid::STATE::STOPPING;
+        select_way_ = AstarAvoid::STATE::RELAYING;
+        avoid_index_ = -1;
       }
     }
     else if (state_ == AstarAvoid::STATE::AVOIDING)
     {
+      avoid_index_ = updateCurrentIndex(avoid_waypoints_, current_pose_global_.pose, avoid_index_);
+      // ROS_INFO("avoid_index_ = %d", avoid_index_);
       // Check if goal reached
       if (avoid_index_ >= avoid_path_size_)
       {
         ROS_INFO("AVOIDING -> RELAYING, Reached goal");
         state_ = AstarAvoid::STATE::RELAYING;
         select_way_ = AstarAvoid::STATE::RELAYING;
+        avoid_index_ = -1;
       }
       else
       {
@@ -308,38 +315,37 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
     goal_indices.push_back(goal_index);
   }
 
-  if (goal_poses.size() == 0)
+  if (goal_poses.empty())
   {
     ROS_ERROR("Can't find goal. base_index_ = %d, obstacle_index_ = %d, stopline_ahead_num_ = %d, base_size = %lu",
               base_index_, obstacle_index_, stopline_ahead_num_, base_waypoints_.waypoints.size());
     return false;
   }
+
   // initialize costmap for A* search
   astar_.initialize(costmap_);
 
   // execute astar search
+  avoid_start_base_index_ = base_index_;
   found_path = astar_.makePlan(current_pose_local_.pose, goal_poses);
 
-  static ros::Publisher pub = nh_.advertise<nav_msgs::Path>("debug", 1, true);
-
-  if (found_path)
+  if (found_path && !astar_.getPath().poses.empty())
   {
-    pub.publish(astar_.getPath());
+    debug_pub_.publish(astar_.getPath());
     // Get reached goal index
-    int goal_index = goal_indices.at(astar_.getGoalIndex());
-    mergeAvoidWaypoints(astar_.getPath(), base_index_, goal_index, end_of_avoid_index);
-    if (avoid_waypoints_.waypoints.size() > 0)
+    avoid_finish_base_index_ = goal_indices.at(astar_.getGoalIndex());
+    mergeAvoidWaypoints(astar_.getPath(), avoid_start_base_index_, avoid_finish_base_index_, end_of_avoid_index);
+    if (!avoid_waypoints_.waypoints.empty())
     {
-      avoid_start_base_index_ = base_index_;
-      avoid_finish_base_index_ = goal_index;
       avoid_index_ = avoid_start_base_index_;
-      ROS_INFO("Found GOAL at goal_index = %d", goal_index);
+      ROS_INFO("Found GOAL at goal_index = %d, current_index = %d, path_size = %lu", avoid_finish_base_index_,
+               avoid_start_base_index_, astar_.getPath().poses.size());
       astar_.reset();
       return true;
     }
     else
     {
-      ROS_ERROR("Wrong path detected. goal_index = %d, waypoints size = %lu", goal_index,
+      ROS_ERROR("Wrong path detected. goal_index = %d, waypoints size = %lu", avoid_finish_base_index_,
                 avoid_waypoints_.waypoints.size());
       found_path = false;
     }
@@ -368,8 +374,6 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
   avoid_waypoints_.waypoints.clear();
   for (int i = 0; i < start_index_in; ++i)
   {
-    // ROS_INFO("[avoid_waypoints_(1)]x:%lf, y:%lf, index:%d", base_waypoints_.waypoints.at(i).pose.pose.position.x,
-    //          base_waypoints_.waypoints.at(i).pose.pose.position.y, i);
     avoid_waypoints_.waypoints.push_back(base_waypoints_.waypoints.at(i));
   }
 
@@ -389,7 +393,6 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
           transformPose(next_pose.pose, getTransform(base_waypoints_.header.frame_id, next_pose.header.frame_id));
       wp.pose.pose.position.z = current_pose_global_.pose.position.z;         // height = const
       wp.twist.twist.linear.x = direction * avoid_waypoints_velocity_ / 3.6;  // velocity = const
-      // ROS_INFO("[avoid_waypoints_(2)]x:%lf, y:%lf, index:%d", wp.pose.pose.position.x, wp.pose.pose.position.y, i);
       avoid_waypoints_.waypoints.push_back(wp);
     }
   }
@@ -426,15 +429,13 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
   }
 
   // add waypoints after goal index
-  for (int i = goal_index; i < static_cast<int>(base_waypoints_.waypoints.size()); ++i)
+  for (int i = goal_index + 1; i < static_cast<int>(base_waypoints_.waypoints.size()); ++i)
   {
-    // ROS_INFO("[avoid_waypoints_(3)]x:%lf, y:%lf, index:%d", base_waypoints_.waypoints.at(i).pose.pose.position.x,
-    //          base_waypoints_.waypoints.at(i).pose.pose.position.y, i);
     avoid_waypoints_.waypoints.push_back(base_waypoints_.waypoints.at(i));
   }
 
   // update index for merged waypoints
-  end_of_avoid_index = start_index_in + path.poses.size();
+  end_of_avoid_index = start_index_in + path.poses.size() + 1;
 }
 
 void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
@@ -444,9 +445,8 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   int current_index;
   if (select_way_ == AstarAvoid::STATE::AVOIDING)
   {
-    avoid_index_ = updateCurrentIndex(avoid_waypoints_, current_pose_global_.pose, avoid_index_);
-    current_index = avoid_index_;
     current_waypoints = avoid_waypoints_;
+    current_index = avoid_index_;
   }
   else
   {
@@ -459,9 +459,6 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
              static_cast<int>(current_waypoints.waypoints.size()));
     select_way_ = AstarAvoid::STATE::RELAYING;
     state_ = AstarAvoid::STATE::STOPPING;
-    current_waypoints = base_waypoints_;
-    current_index = base_index_;
-    avoid_index_ = base_index_;
     return;
   }
 
@@ -469,14 +466,10 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   autoware_msgs::Lane local_waypoints;
   local_waypoints.header = current_waypoints.header;
   local_waypoints.increment = current_waypoints.increment;
-  // ROS_INFO("[AstarAvoid::publishWaypoints] next_index: %d ->  last: %d", next_index,
-  //          static_cast<int>(current_waypoints.waypoints.size()));
   for (int i = current_index;
        i < current_index + safety_waypoints_size_ && i < static_cast<int>(current_waypoints.waypoints.size()); ++i)
   {
     local_waypoints.waypoints.push_back(current_waypoints.waypoints[i]);
-    // ROS_INFO("x:%lf, y:%lf, index:%d", current_waypoints.waypoints[i].pose.pose.position.x,
-    //          current_waypoints.waypoints[i].pose.pose.position.y, i);
   }
 
   if (!local_waypoints.waypoints.empty())
@@ -488,9 +481,6 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
     ROS_WARN("No waypoints to publish");
     select_way_ = AstarAvoid::STATE::RELAYING;
     state_ = AstarAvoid::STATE::STOPPING;
-    current_waypoints = base_waypoints_;
-    current_index = base_index_;
-    avoid_index_ = base_index_;
   }
 }
 
