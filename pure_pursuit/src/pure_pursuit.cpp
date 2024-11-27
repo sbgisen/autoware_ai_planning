@@ -122,7 +122,6 @@ bool PurePursuit::interpolateNextTarget(int next_waypoint, geometry_msgs::Point*
 int PurePursuit::getTargetIndex(const autoware_msgs::Lane& current_path, geometry_msgs::Pose current_pose,
                                 int current_index, double lookahead_distance)
 {
-  int target_index = -1;
   const int path_size = static_cast<int>(current_path.waypoints.size());
   if (path_size == 0)
   {
@@ -139,37 +138,27 @@ int PurePursuit::getTargetIndex(const autoware_msgs::Lane& current_path, geometr
     // Current_index is the last waypoint
     return current_index;
   }
-  target_index = std::max(current_index + 1, path_size - 1);
+
   // Look ahead from current waypoint to find the next point within lookahead_distance_,
   // while ensuring we don't cross a switchback point.
-  bool switchback_detected = false;
-  for (int i = current_index + 1; i < path_size; i++)
+  for (int i = current_index; i < path_size - 1; i++)
   {
     double current_velocity = current_path.waypoints.at(i).twist.twist.linear.x;
-    double next_velocity =
-        (i + 1 < path_size) ? current_path.waypoints.at(i + 1).twist.twist.linear.x : current_velocity;
+    double next_velocity = current_path.waypoints.at(i + 1).twist.twist.linear.x;
 
     if (current_velocity * next_velocity < 0)
     {
       // If the velocity changes its sign, the current waypoint is the next waypoint to avoid the case where the vehicle
       // is at the switchback point
-      switchback_detected = true;
-      target_index = i;
-      return target_index;
+      return i;
     }
     if (getPlaneDistance(current_path.waypoints.at(i).pose.pose.position, current_pose.position) > lookahead_distance)
     {
-      target_index = i;
-      return target_index;
+      return i;
     }
   }
-  if (!switchback_detected)
-  {
-    // Reached end of path; setting next waypoint to last index
-    return target_index;
-  }
-  ROS_WARN("Failed to update target index. Unknown error.");
-  return -1;
+  // Reached end of path; setting next waypoint to last index
+  return (path_size - 1);
 }
 
 bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
@@ -205,7 +194,8 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
 
   // Check target velocity
   double target_velocity = 0;
-  bool target_velocity_is_valid = getCurrentCommandVelocity(target_velocity);
+  bool target_velocity_is_valid = getCurrentCommandVelocity(target_velocity, current_lane, current_waypoint_index_,
+                                                            target_waypoint_index_, current_pose_);
   if (!target_velocity_is_valid)
   {
     // Target velocity is wrong
