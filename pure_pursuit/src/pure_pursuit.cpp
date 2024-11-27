@@ -202,13 +202,15 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
                                                             target_waypoint_index_, current_pose_);
   if (!target_velocity_is_valid)
   {
+    double current_waypoint_velocity = current_waypoints_.at(current_waypoint_index_).twist.twist.linear.x;
+    double velocity_sign = current_waypoint_velocity > 0 ? 1.0 : -1.0;
     // Target velocity is wrong
     // Recover by setting the curvature to the maximum value and the velocity to a small value
     geometry_msgs::Pose target_pose = current_waypoints_.at(target_waypoint_index_).pose.pose;
     geometry_msgs::Pose relative_target_pose = getRelativePose(current_pose_, target_pose);
     if (recovery_rotate_direction_ == 0)
     {
-      if (relative_target_pose.position.y > 0)
+      if (relative_target_pose.position.y * velocity_sign > 0)
       {
         recovery_rotate_direction_ = 1;
       }
@@ -218,7 +220,7 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
       }
     }
     output_kappa = recovery_rotate_direction_ / RADIUS_MIN_;
-    output_velocity = RECOVERY_VEL;
+    output_velocity = velocity_sign * RECOVERY_VEL;
     return true;
   }
   else
