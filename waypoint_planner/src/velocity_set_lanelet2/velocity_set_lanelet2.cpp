@@ -343,17 +343,19 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
 int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int closest_waypoint,
                              const autoware_msgs::Lane& lane, const double stop_range, const double deceleration_range,
                              const double points_threshold, const geometry_msgs::Pose localizer_pose,
-                             ObstaclePoints* obstacle_points, const int deceleration_search_distance)
+                             ObstaclePoints* obstacle_points, const int deceleration_search_distance,
+                             const double search_step_distance)
 {
   int decelerate_obstacle_waypoint = -1;
-  // start search from the closest waypoint
+
+  // Start searching from the closest waypoint
   for (int i = closest_waypoint; i < closest_waypoint + deceleration_search_distance; i++)
   {
-    // reach the end of waypoints
+    // Exit if the waypoint index exceeds the total number of waypoints
     if (i >= static_cast<int>(lane.waypoints.size()))
       break;
 
-    // waypoint seen by localizer
+    // Get the coordinates of the current waypoint relative to the localizer's pose
     geometry_msgs::Point waypoint = calcRelativeCoordinate(lane.waypoints[i].pose.pose.position, localizer_pose);
     tf::Vector3 tf_waypoint = point2vector(waypoint);
     tf_waypoint.setZ(0);
@@ -363,7 +365,7 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
     {
       tf::Vector3 point_vector(p.x, p.y, 0);
 
-      // 2D distance between waypoint and points (obstacle)
+      // Calculate the 2D distance between the waypoint and the obstacle point
       double dt = tf::tfDistance(point_vector, tf_waypoint);
       if (dt > stop_range && dt < stop_range + deceleration_range)
       {
@@ -376,7 +378,7 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
       }
     }
 
-    // there is an obstacle if the number of points exceeded the threshold
+    // If the number of obstacle points exceeds the threshold, set the waypoint as an obstacle
     if (decelerate_point_count > points_threshold)
     {
       decelerate_obstacle_waypoint = i;
@@ -385,7 +387,60 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
 
     obstacle_points->clearDeceleratePoints();
 
-    // check next waypoint...
+    // If the next waypoint exists, perform interpolation
+    if (i + 1 < static_cast<int>(lane.waypoints.size()))
+    {
+      // Get the coordinates of the next waypoint relative to the localizer's pose
+      geometry_msgs::Point waypoint_next =
+          calcRelativeCoordinate(lane.waypoints[i + 1].pose.pose.position, localizer_pose);
+      tf::Vector3 tf_waypoint_next = point2vector(waypoint_next);
+      tf_waypoint_next.setZ(0);
+
+      tf::Vector3 direction = tf_waypoint_next - tf_waypoint;
+      double distance = direction.length();
+
+      // If the distance between waypoints exceeds the search_step_distance, perform interpolation
+      if (distance > search_step_distance)
+      {
+        int num_steps = static_cast<int>(std::ceil(distance / search_step_distance));
+        direction.normalize();
+
+        for (int step = 1; step < num_steps; ++step)
+        {
+          // Calculate the interpolated point
+          tf::Vector3 interpolated_point = tf_waypoint + direction * search_step_distance * step;
+
+          int interpolated_decelerate_point_count = 0;
+          for (const auto& p : points)
+          {
+            tf::Vector3 point_vector(p.x, p.y, 0);
+            double dt = tf::tfDistance(point_vector, interpolated_point);
+            if (dt > stop_range && dt < stop_range + deceleration_range)
+            {
+              interpolated_decelerate_point_count++;
+              geometry_msgs::Point point_temp;
+              point_temp.x = p.x;
+              point_temp.y = p.y;
+              point_temp.z = p.z;
+              obstacle_points->setDeceleratePoint(calcAbsoluteCoordinate(point_temp, localizer_pose));
+            }
+          }
+
+          // If the number of obstacle points at the interpolated point exceeds the threshold
+          if (interpolated_decelerate_point_count > points_threshold)
+          {
+            decelerate_obstacle_waypoint = i;  // Set the waypoint before the interpolated point as the obstacle
+            break;
+          }
+
+          obstacle_points->clearDeceleratePoints();
+        }
+
+        // If an obstacle was detected during interpolation, exit the loop
+        if (decelerate_obstacle_waypoint != -1)
+          break;
+      }
+    }
   }
 
   return decelerate_obstacle_waypoint;
@@ -426,9 +481,10 @@ EControl pointsDetection(const pcl::PointCloud<pcl::PointXYZ>& points, const int
       return EControl::OTHERS;
   }
 
-  int decelerate_obstacle_waypoint = detectDecelerateObstacle(
-      points, closest_waypoint, lane, vs_info.getStopRange(), vs_info.getDecelerationRange(),
-      vs_info.getPointsThreshold(), vs_info.getLocalizerPose(), obstacle_points, deceleration_search_distance);
+  int decelerate_obstacle_waypoint =
+      detectDecelerateObstacle(points, closest_waypoint, lane, vs_info.getStopRange(), vs_info.getDecelerationRange(),
+                               vs_info.getPointsThreshold(), vs_info.getLocalizerPose(), obstacle_points,
+                               deceleration_search_distance, search_step_distance);
 
   // stop obstacle was not found
   if (stop_obstacle_waypoint < 0)
