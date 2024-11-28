@@ -177,6 +177,7 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   if (target_waypoint_index_ < 0 || target_waypoint_index_ >= path_size)
   {
     // Target waypoint index is out of range
+    ROS_WARN("Target waypoint index is out of range");
     return false;
   }
 
@@ -207,12 +208,12 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   }
   output_kappa = calcCurvature(next_target_position_);
 
-  // Return true if the curvature can be calculated
   if (target_waypoint_index_ == 0 || target_waypoint_index_ == path_size - 1 ||
       target_waypoint_index_ == current_waypoint_index_)
   {
     return false;
   }
+  // Return true if the curvature can be calculated
   return true;
 }
 
@@ -241,7 +242,6 @@ double PurePursuit::getCurrentCommandVelocity(autoware_msgs::Lane current_waypoi
            prev_waypoint_velocity * current_waypoint_velocity > 0)
   {
     geometry_msgs::Pose prev_waypoint_pose = current_waypoint.waypoints.at(prev_index).pose.pose;
-    geometry_msgs::Pose prev_waypoint_pose_relative = getRelativePose(current_pose, prev_waypoint_pose);
     double prev_waypoint_distance = getPlaneDistance(prev_waypoint_pose.position, current_pose.position);
     double target_velocity =
         prev_waypoint_velocity * (current_waypoint_distance / (prev_waypoint_distance + current_waypoint_distance)) +
