@@ -137,6 +137,16 @@ void AstarAvoid::run()
     bool found_obstacle = (obstacle_index_ >= 0);
     bool avoid_velocity = (fabs(current_velocity_.twist.linear.x) < avoid_start_velocity_ / 3.6);
 
+    // Update avoiding index
+    if (select_way_ == AstarAvoid::STATE::AVOIDING)
+    {
+      avoid_index_ = updateCurrentIndex(avoid_waypoints_, current_pose_global_.pose, avoid_index_);
+    }
+    else
+    {
+      avoid_index_ = -1;
+    }
+
     // update state
     if (state_ == AstarAvoid::STATE::RELAYING)
     {
@@ -191,7 +201,6 @@ void AstarAvoid::run()
     }
     else if (state_ == AstarAvoid::STATE::AVOIDING)
     {
-      avoid_index_ = updateCurrentIndex(avoid_waypoints_, current_pose_global_.pose, avoid_index_);
       // ROS_INFO("avoid_index_ = %d", avoid_index_);
       // Check if goal reached
       if (avoid_index_ >= avoid_path_size_)
