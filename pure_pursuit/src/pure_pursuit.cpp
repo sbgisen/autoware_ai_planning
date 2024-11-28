@@ -138,31 +138,15 @@ int PurePursuit::getTargetIndex(const autoware_msgs::Lane& current_path, geometr
     // Current_index is the last waypoint
     return current_index;
   }
-
-  // Look ahead from current waypoint to find the next point within lookahead_distance_,
-  // while ensuring we don't cross a switchback point.
-  for (int i = current_index; i < path_size - 1; i++)
-  {
-    double current_velocity = current_path.waypoints.at(i).twist.twist.linear.x;
-    double next_velocity = current_path.waypoints.at(i + 1).twist.twist.linear.x;
-    geometry_msgs::Pose target_pose = current_path.waypoints.at(i).pose.pose;
-    target_pose.orientation = getQuaternionFromYaw(getYawFromPath(current_path, i));
-    geometry_msgs::Pose currennt2target_relative = getRelativePose(current_pose, target_pose);
-    double target_yaw_relative = tf::getYaw(currennt2target_relative.orientation);
-
-    if (current_velocity * next_velocity < 0)
-    {
-      // If the velocity changes its sign, the current waypoint is the next waypoint to avoid the case where the vehicle
-      // is at the switchback point
-      return i;
-    }
-    if (getPlaneDistance(current_path.waypoints.at(i).pose.pose.position, current_pose.position) > lookahead_distance)
-    {
-      return i;
-    }
-  }
-  // Reached end of path; setting next waypoint to last index
-  return (path_size - 1);
+  // Set virtual target pose based on the current pose and the lookahead_distance
+  geometry_msgs::Pose lookahead_pose = current_pose;
+  double look_yaw = tf::getYaw(current_pose.orientation);
+  double vel_sign = current_path.waypoints.at(current_index).twist.twist.linear.x < 0 ? -1.0 : 1.0;
+  tf::Vector3 look_vector(lookahead_distance * cos(look_yaw), lookahead_distance * sin(look_yaw), 0);
+  lookahead_pose.position.x = current_pose.position.x + vel_sign * look_vector.x();
+  lookahead_pose.position.y = current_pose.position.y + vel_sign * look_vector.y();
+  int target_index = updateCurrentIndex(current_path, lookahead_pose, current_index + 1);
+  return target_index;
 }
 
 bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
@@ -197,37 +181,7 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   }
 
   // Check target velocity
-  double target_velocity = 0;
-  bool target_velocity_is_valid = getCurrentCommandVelocity(target_velocity, current_lane, current_waypoint_index_,
-                                                            target_waypoint_index_, current_pose_);
-  if (!target_velocity_is_valid)
-  {
-    double current_waypoint_velocity = current_waypoints_.at(current_waypoint_index_).twist.twist.linear.x;
-    double velocity_sign = current_waypoint_velocity > 0 ? 1.0 : -1.0;
-    // Target velocity is wrong
-    // Recover by setting the curvature to the maximum value and the velocity to a small value
-    geometry_msgs::Pose target_pose = current_waypoints_.at(target_waypoint_index_).pose.pose;
-    geometry_msgs::Pose relative_target_pose = getRelativePose(current_pose_, target_pose);
-    if (recovery_rotate_direction_ == 0)
-    {
-      if (relative_target_pose.position.y * velocity_sign > 0)
-      {
-        recovery_rotate_direction_ = 1;
-      }
-      else
-      {
-        recovery_rotate_direction_ = -1;
-      }
-    }
-    output_kappa = recovery_rotate_direction_ / RADIUS_MIN_;
-    output_velocity = velocity_sign * RECOVERY_VEL;
-    return true;
-  }
-  else
-  {
-    recovery_rotate_direction_ = 0;
-  }
-  output_velocity = target_velocity;
+  output_velocity = getCurrentCommandVelocity(current_lane, current_waypoint_index_, current_pose_);
   next_target_position_ = current_waypoints_.at(target_waypoint_index_).pose.pose.position;
   // Verify if curvature can be calculated based on lookahead distance
   if (getPlaneDistance(next_target_position_, current_pose_.position) < minimum_lookahead_distance_)
@@ -259,71 +213,41 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   {
     return false;
   }
-  else if (!is_linear_interpolation_)
-  {
-    return true;
-  }
-
-  // Perform linear interpolation for the next target
-  const bool interpolation = interpolateNextTarget(target_waypoint_index_, &next_target_position_);
-  if (!interpolation)
-  {
-    // return false;
-  }
   return true;
 }
 
-bool PurePursuit::getCurrentCommandVelocity(double& output_velocity, autoware_msgs::Lane current_waypoint,
-                                            int current_index, int target_index, geometry_msgs::Pose current_pose)
+double PurePursuit::getCurrentCommandVelocity(autoware_msgs::Lane current_waypoint, int current_index,
+                                              geometry_msgs::Pose current_pose)
 {
-  if (current_index < 0 || current_index >= static_cast<int>(current_waypoints_.size()))
+  int prev_index = std::max(0, current_index - 1);
+  int next_index = std::min(static_cast<int>(current_waypoint.waypoints.size() - 1), current_index + 1);
+  geometry_msgs::Pose current_waypoint_pose = current_waypoint.waypoints.at(current_index).pose.pose;
+  geometry_msgs::Pose current_waypoint_pose_relative = getRelativePose(current_pose, current_waypoint_pose);
+  double prev_waypoint_velocity = current_waypoint.waypoints.at(prev_index).twist.twist.linear.x;
+  double current_waypoint_velocity = current_waypoint.waypoints.at(current_index).twist.twist.linear.x;
+  double next_waypoint_velocity = current_waypoint.waypoints.at(next_index).twist.twist.linear.x;
+  double current_waypoint_distance = getPlaneDistance(current_waypoint_pose.position, current_pose.position);
+  if (current_waypoint_pose_relative.position.x * current_waypoint_velocity > 0 &&
+      next_waypoint_velocity * current_waypoint_velocity > 0)
   {
-    // ROS_WARN("Current waypoint index is out of range");
-    output_velocity = 0;
-    return false;
+    geometry_msgs::Pose next_waypoint_pose = current_waypoint.waypoints.at(next_index).pose.pose;
+    double next_waypoint_distance = getPlaneDistance(next_waypoint_pose.position, current_pose.position);
+    double target_velocity =
+        current_waypoint_velocity * (next_waypoint_distance / (current_waypoint_distance + next_waypoint_distance)) +
+        next_waypoint_velocity * (current_waypoint_distance / (current_waypoint_distance + next_waypoint_distance));
+    return target_velocity;
   }
-  double current_vel = current_waypoints_.at(current_waypoint_index_).twist.twist.linear.x;
-  double prev_vel = current_vel;
-  if (current_waypoint_index_ > 0)
+  else if (current_waypoint_pose_relative.position.x * current_waypoint_velocity < 0 &&
+           prev_waypoint_velocity * current_waypoint_velocity > 0)
   {
-    prev_vel = current_waypoints_.at(current_waypoint_index_ - 1).twist.twist.linear.x;
+    geometry_msgs::Pose prev_waypoint_pose = current_waypoint.waypoints.at(prev_index).pose.pose;
+    geometry_msgs::Pose prev_waypoint_pose_relative = getRelativePose(current_pose, prev_waypoint_pose);
+    double prev_waypoint_distance = getPlaneDistance(prev_waypoint_pose.position, current_pose.position);
+    double target_velocity =
+        prev_waypoint_velocity * (current_waypoint_distance / (prev_waypoint_distance + current_waypoint_distance)) +
+        current_waypoint_velocity * (prev_waypoint_distance / (prev_waypoint_distance + current_waypoint_distance));
+    return target_velocity;
   }
-  if (current_vel == 0 && prev_vel == 0)
-  {
-    // Current velocity is zero
-    output_velocity = 0;
-    return true;
-  }
-  else if (target_waypoint_index_ == current_waypoint_index_)
-  {
-    // Current waypoint index is the same as target waypoint index
-    output_velocity = current_vel;
-    return true;
-  }
-  else if (target_waypoint_index_ < current_waypoint_index_)
-  {
-    // Target waypoint index is behind current waypoint index
-    output_velocity = 0;
-    return false;
-  }
-  for (int i = current_waypoint_index_; i < target_waypoint_index_; i++)
-  {
-    geometry_msgs::Pose relative_pose = getRelativePose(current_pose_, current_waypoints_.at(i).pose.pose);
-    current_vel = current_waypoints_.at(i).twist.twist.linear.x;
-
-    if (relative_pose.position.x * current_vel > 0)
-    {
-      output_velocity = current_vel;
-      return true;
-    }
-    else if (relative_pose.position.x * prev_vel > 0)
-    {
-      output_velocity = prev_vel;
-      return true;
-    }
-    prev_vel = current_vel;
-  }
-  output_velocity = 0;
-  return false;
+  return current_waypoint_velocity;
 }
 }  // namespace waypoint_follower

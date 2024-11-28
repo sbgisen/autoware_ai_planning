@@ -64,6 +64,8 @@ void AstarAvoid::currentPoseCallback(const geometry_msgs::PoseStamped& msg)
   }
   else
   {
+    // ROS_INFO("current_pose_global_.header.frame_id = %s, costmap_.header.frame_id = %s",
+    //          current_pose_global_.header.frame_id.c_str(), costmap_.header.frame_id.c_str());
     current_pose_local_.pose = transformPose(
         current_pose_global_.pose, getTransform(costmap_.header.frame_id, current_pose_global_.header.frame_id));
     current_pose_local_.header.frame_id = costmap_.header.frame_id;
@@ -398,6 +400,8 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
       // if the next_pose.pose.position.z value is smaller than 0, it means that the path is backward
       direction = (next_pose.pose.position.z < 0) ? -1 : 1;
       next_pose.pose.position.z = 0;
+      // ROS_INFO("base_waypoints_.header.frame_id = %s, next_pose.header.frame_id = %s",
+      //          base_waypoints_.header.frame_id.c_str(), next_pose.header.frame_id.c_str());
       wp.pose.pose =
           transformPose(next_pose.pose, getTransform(base_waypoints_.header.frame_id, next_pose.header.frame_id));
       wp.pose.pose.position.z = current_pose_global_.pose.position.z;         // height = const
@@ -411,6 +415,8 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
     {
       autoware_msgs::Waypoint wp;
       wp.pose.header = base_waypoints_.header;
+      // ROS_INFO("base_waypoints_.header.frame_id = %s, pose.header.frame_id = %s",
+      //          base_waypoints_.header.frame_id.c_str(), pose.header.frame_id.c_str());
       wp.pose.pose = transformPose(pose.pose, getTransform(base_waypoints_.header.frame_id, pose.header.frame_id));
       wp.pose.pose.position.z = current_pose_global_.pose.position.z;  // height = const
       wp.twist.twist.linear.x = avoid_waypoints_velocity_ / 3.6;       // velocity = const
@@ -496,6 +502,11 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
 tf::Transform AstarAvoid::getTransform(const std::string& from, const std::string& to)
 {
   tf::StampedTransform stf;
+  if (from == "" || to == "")
+  {
+    ROS_ERROR("Invalid frame_id: form = %s, to = %s", from.c_str(), to.c_str());
+    return stf;
+  }
   try
   {
     tf_listener_.lookupTransform(from, to, ros::Time(0), stf);
@@ -503,6 +514,7 @@ tf::Transform AstarAvoid::getTransform(const std::string& from, const std::strin
   catch (tf::TransformException ex)
   {
     ROS_ERROR("%s", ex.what());
+    ROS_ERROR("Failed to get transform from %s to %s", from.c_str(), to.c_str());
   }
   return stf;
 }
