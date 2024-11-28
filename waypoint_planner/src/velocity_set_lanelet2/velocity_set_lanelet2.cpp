@@ -240,7 +240,7 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
       break;
     }
 
-    // Detection for crosswalk
+    // Stop when an obstacle is seen within the crosswalk polygon
     if (i == detection_waypoint)
     {
       if (crossWalkDetection(points, closest_crosswalks, localizer_pose, points_threshold, obstacle_points) ==
@@ -253,6 +253,7 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
     }
 
     // Get the coordinates of the current waypoint
+    double current_index_vel = lane.waypoints[i].twist.twist.linear.x;
     geometry_msgs::Point waypoint_i = calcRelativeCoordinate(lane.waypoints[i].pose.pose.position, localizer_pose);
     tf::Vector3 tf_waypoint_i = point2vector(waypoint_i);
     tf_waypoint_i.setZ(0);
@@ -262,8 +263,8 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
     for (const auto& p : points)
     {
       tf::Vector3 point_vector(p.x, p.y, 0);
-      double dt = tf::tfDistance(point_vector, tf_waypoint_i);
-      if (dt < stop_range)
+      double distance = tf::tfDistance(point_vector, tf_waypoint_i);
+      if (distance < stop_range && current_index_vel * p.x > 0)
       {
         stop_point_count++;
         geometry_msgs::Point point_temp;
@@ -309,7 +310,7 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
           {
             tf::Vector3 point_vector(p.x, p.y, 0);
             double dt = tf::tfDistance(point_vector, interpolated_point);
-            if (dt < stop_range)
+            if (dt < stop_range && current_index_vel * p.x > 0)
             {
               interpolated_stop_point_count++;
               geometry_msgs::Point point_temp;
@@ -356,6 +357,7 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
       break;
 
     // Get the coordinates of the current waypoint relative to the localizer's pose
+    double current_index_vel = lane.waypoints[i].twist.twist.linear.x;
     geometry_msgs::Point waypoint = calcRelativeCoordinate(lane.waypoints[i].pose.pose.position, localizer_pose);
     tf::Vector3 tf_waypoint = point2vector(waypoint);
     tf_waypoint.setZ(0);
@@ -364,10 +366,9 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
     for (const auto& p : points)
     {
       tf::Vector3 point_vector(p.x, p.y, 0);
-
       // Calculate the 2D distance between the waypoint and the obstacle point
-      double dt = tf::tfDistance(point_vector, tf_waypoint);
-      if (dt > stop_range && dt < stop_range + deceleration_range)
+      double distance = tf::tfDistance(point_vector, tf_waypoint);
+      if (distance > stop_range && distance < stop_range + deceleration_range && current_index_vel * p.x > 0)
       {
         decelerate_point_count++;
         geometry_msgs::Point point_temp;
@@ -414,8 +415,8 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
           for (const auto& p : points)
           {
             tf::Vector3 point_vector(p.x, p.y, 0);
-            double dt = tf::tfDistance(point_vector, interpolated_point);
-            if (dt > stop_range && dt < stop_range + deceleration_range)
+            double distance = tf::tfDistance(point_vector, interpolated_point);
+            if (distance > stop_range && distance < stop_range + deceleration_range && current_index_vel * p.x > 0)
             {
               interpolated_decelerate_point_count++;
               geometry_msgs::Point point_temp;
