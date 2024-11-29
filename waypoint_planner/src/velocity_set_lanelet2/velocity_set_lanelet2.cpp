@@ -43,6 +43,10 @@ constexpr int LOOP_RATE = 10;
 static lanelet::LaneletMapPtr g_lanelet_map;
 static bool g_loaded_lanelet_map;
 lanelet::ConstLanelets g_crosswalk_lanelets;
+bool g_use_robot_shape;
+double g_robot_width;
+double g_robot_length;
+double g_robot_base2back;
 
 // set color according to given obstacle
 void obstacleColorByKind(const EControl kind, std_msgs::ColorRGBA* color, const double alpha = 0.5)
@@ -264,7 +268,17 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
     {
       tf::Vector3 point_vector(p.x, p.y, 0);
       double distance = tf::tfDistance(point_vector, tf_waypoint_i);
-      if (distance < stop_range && current_index_vel * p.x > 0)
+      bool in_robot_shape = false;
+      double robot_shape_margin = std::max(0.0, (stop_range - g_robot_width) * 0.5);
+      if (g_use_robot_shape)
+      {
+        if (p.x > -(g_robot_base2back + robot_shape_margin) && p.x < (g_robot_length + robot_shape_margin) &&
+            std::abs(p.y) < (g_robot_width + robot_shape_margin))
+        {
+          in_robot_shape = true;
+        }
+      }
+      if ((distance < stop_range || in_robot_shape) && current_index_vel * p.x > 0)
       {
         stop_point_count++;
         geometry_msgs::Point point_temp;
@@ -309,8 +323,20 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
           for (const auto& p : points)
           {
             tf::Vector3 point_vector(p.x, p.y, 0);
-            double dt = tf::tfDistance(point_vector, interpolated_point);
-            if (dt < stop_range && current_index_vel * p.x > 0)
+            double distance = tf::tfDistance(point_vector, interpolated_point);
+
+            bool in_robot_shape = false;
+            double robot_shape_margin = std::max(0.0, (stop_range - g_robot_width) * 0.5);
+            if (g_use_robot_shape)
+            {
+              if (p.x > -(g_robot_base2back + robot_shape_margin) && p.x < (g_robot_length + robot_shape_margin) &&
+                  std::abs(p.y) < (g_robot_width + robot_shape_margin))
+              {
+                in_robot_shape = true;
+              }
+            }
+
+            if ((distance < stop_range || in_robot_shape) && current_index_vel * p.x > 0)
             {
               interpolated_stop_point_count++;
               geometry_msgs::Point point_temp;
@@ -758,6 +784,10 @@ int main(int argc, char** argv)
   private_rosnode.param<int>("deceleration_search_distance", deceleration_search_distance, 30);
   private_rosnode.param<int>("stop_search_distance", stop_search_distance, 60);
   private_rosnode.param<double>("fill_waypoints_interval", fill_waypoints_interval, 0.1);
+  private_rosnode.param<double>("robot_length", g_robot_length, 0.0);
+  private_rosnode.param<double>("robot_width", g_robot_width, 0.0);
+  private_rosnode.param<double>("robot_base2back", g_robot_base2back, 0.0);
+  g_use_robot_shape = g_robot_length > 0.0 && g_robot_width > 0.0;
 
   VelocitySetPath vs_path;
   VelocitySetInfo vs_info;
