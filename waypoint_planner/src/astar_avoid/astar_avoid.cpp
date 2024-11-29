@@ -15,6 +15,7 @@
  */
 
 #include "waypoint_planner/astar_avoid/astar_avoid.h"
+#include <cmath>
 #include "amathutils_lib/amathutils.hpp"
 #include "libwaypoint_follower/libwaypoint_follower.h"
 #include "ros/console.h"
@@ -34,6 +35,8 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<int>("closest_search_size", closest_search_size_, 30);
   private_nh_.param<int>("stopline_ahead_num", stopline_ahead_num_, 1);
   private_nh_.param<double>("decel_limit", decel_limit_, 0.3);
+  private_nh_.param<double>("accel_limit", accel_limit_, 1.0);
+  private_nh_.param<double>("vel_min", vel_min_, 1.0);
 
   safety_waypoints_pub_ = nh_.advertise<autoware_msgs::Lane>("safety_waypoints", 1, true);
   debug_pub_ = nh_.advertise<nav_msgs::Path>("debug", 1, true);
@@ -424,31 +427,14 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
     }
   }
 
-  // smoothing connection point ( only deceleration )
-  double next_velocity = base_waypoints_.waypoints[goal_index].twist.twist.linear.x;
-  if (next_velocity - avoid_waypoints_.waypoints.end()->twist.twist.linear.x < 0)
-  {
-    auto next_position = base_waypoints_.waypoints[goal_index].pose.pose.position;
-    for (auto it = avoid_waypoints_.waypoints.rbegin(); it != avoid_waypoints_.waypoints.rend(); ++it)
-    {
-      double dist = amathutils::find_distance(next_position, it->pose.pose.position);
-      double vel = std::sqrt(std::pow(next_velocity, 2.0) - 2 * -decel_limit_ * dist);
-      if (vel > it->twist.twist.linear.x)
-      {
-        break;
-      }
-      it->twist.twist.linear.x = vel;
-      next_velocity = vel;
-      next_position = it->pose.pose.position;
-    }
-  }
-
   // add waypoints after goal index
   for (int i = goal_index + 1; i < static_cast<int>(base_waypoints_.waypoints.size()); ++i)
   {
     avoid_waypoints_.waypoints.push_back(base_waypoints_.waypoints.at(i));
   }
 
+  // smoothing connection point
+  limitPathAccel(avoid_waypoints_, accel_limit_, decel_limit_, (vel_min_ / 3.6));
   // update index for merged waypoints
   end_of_avoid_index = start_index_in + path.poses.size() + 1;
 }
@@ -517,4 +503,104 @@ tf::Transform AstarAvoid::getTransform(const std::string& from, const std::strin
     ROS_ERROR("Failed to get transform from %s to %s", from.c_str(), to.c_str());
   }
   return stf;
+}
+
+void AstarAvoid::limitPathAccel(autoware_msgs::Lane& path, double accel, double decel, double vel_min)
+{
+  if (path.waypoints.size() < 2)
+  {
+    return;
+  }
+
+  // Limit acceleration
+  double prev_vel = path.waypoints.front().twist.twist.linear.x;
+  for (size_t i = 1; i < path.waypoints.size(); ++i)
+  {
+    double dist =
+        amathutils::find_distance(path.waypoints[i - 1].pose.pose.position, path.waypoints[i].pose.pose.position);
+
+    double travel_time = 1.0;
+    if (fabs(prev_vel) > 0.0001)
+    {
+      travel_time = dist / fabs(prev_vel);
+    }
+
+    // Calculate velocity limits based on acceleration
+    double current_vel = path.waypoints[i].twist.twist.linear.x;
+    double vel_sign = (current_vel < 0) ? -1.0 : 1.0;
+
+    // Clamp the current velocity within the calculated limits
+    double vel_limited = current_vel;
+    if (vel_sign > 0)
+    {
+      vel_limited = std::min(vel_limited, prev_vel + accel * travel_time);
+      if (vel_limited < vel_min)
+      {
+        vel_limited = vel_min;
+      }
+    }
+    else
+    {
+      vel_limited = std::max(vel_limited, prev_vel - accel * travel_time);
+      if (vel_limited > -vel_min)
+      {
+        vel_limited = -vel_min;
+      }
+    }
+
+    // Only update the velocity if it's above vel_min to prevent unnecessary changes
+    if (std::fabs(current_vel) > vel_min)
+    {
+      path.waypoints[i].twist.twist.linear.x = vel_limited;
+    }
+
+    // Update previous velocity for the next iteration
+    prev_vel = path.waypoints[i].twist.twist.linear.x;
+  }
+
+  // Limit deceleration
+  double next_vel = path.waypoints.back().twist.twist.linear.x;
+  for (int i = static_cast<int>(path.waypoints.size()) - 2; i >= 0; --i)
+  {
+    double dist =
+        amathutils::find_distance(path.waypoints[i].pose.pose.position, path.waypoints[i + 1].pose.pose.position);
+
+    double travel_time = 1.0;
+    if (fabs(next_vel) > 0.0001)
+    {
+      travel_time = dist / fabs(next_vel);
+    }
+
+    // Calculate velocity limits based on deceleration
+    double current_vel = path.waypoints[i].twist.twist.linear.x;
+    double vel_sign = (current_vel < 0) ? -1.0 : 1.0;
+
+    // Clamp the current velocity within the calculated limits
+    double vel_limited = current_vel;
+    if (vel_sign > 0)
+    {
+      vel_limited = std::min(vel_limited, next_vel + decel * travel_time);
+      if (vel_limited < vel_min)
+      {
+        vel_limited = vel_min;
+      }
+    }
+    else
+    {
+      vel_limited = std::max(vel_limited, next_vel - decel * travel_time);
+      if (vel_limited > -vel_min)
+      {
+        vel_limited = -vel_min;
+      }
+    }
+
+    // Only update the velocity if it's above vel_min to prevent unnecessary changes
+    if (std::fabs(current_vel) > vel_min)
+    {
+      path.waypoints[i].twist.twist.linear.x = vel_limited;
+    }
+
+    // Update next velocity for the next iteration
+    next_vel = path.waypoints[i].twist.twist.linear.x;
+  }
 }

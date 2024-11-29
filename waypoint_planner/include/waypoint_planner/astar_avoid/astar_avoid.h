@@ -78,7 +78,9 @@ private:
   int search_waypoints_delta_;       // skipped waypoints for incremental search [-]
   int closest_search_size_;          // search closest waypoint around your car [-]
   int stopline_ahead_num_;
+  double accel_limit_;  // acceleration limit [m/s^2]
   double decel_limit_;  // deceleration limit [m/s^2]
+  double vel_min_;      // minimum velocity [km/h]
 
   // classes
   AstarSearch astar_;
@@ -129,6 +131,7 @@ private:
   tf::Transform getTransform(const std::string& from, const std::string& to);
   // publish safety waypoints using a timer
   void publishWaypoints(const ros::TimerEvent& e);
+  void limitPathAccel(autoware_msgs::Lane& path, double accel, double decel, double vel_min);
 };
 
 #endif
