@@ -47,6 +47,7 @@ bool g_use_robot_shape;
 double g_robot_width;
 double g_robot_length;
 double g_robot_base2back;
+bool g_ignore_side_detection;
 
 // set color according to given obstacle
 void obstacleColorByKind(const EControl kind, std_msgs::ColorRGBA* color, const double alpha = 0.5)
@@ -280,6 +281,13 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
       }
       if ((distance < stop_range || in_robot_shape) && current_index_vel * p.x > 0)
       {
+        if (g_ignore_side_detection)
+        {
+          if (p.x > -g_robot_base2back && p.x < g_robot_length - g_robot_base2back)
+          {
+            continue;
+          }
+        }
         stop_point_count++;
         geometry_msgs::Point point_temp;
         point_temp.x = p.x;
@@ -337,6 +345,13 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
 
             if ((distance < stop_range || in_robot_shape) && current_index_vel * p.x > 0)
             {
+              if (g_ignore_side_detection)
+              {
+                if (p.x > -g_robot_base2back && p.x < g_robot_length - g_robot_base2back)
+                {
+                  continue;
+                }
+              }
               stop_point_count++;
               geometry_msgs::Point point_temp;
               point_temp.x = p.x;
@@ -433,15 +448,13 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
         {
           // Calculate the interpolated point
           tf::Vector3 interpolated_point = tf_waypoint + direction * search_step_distance * step;
-
-          int interpolated_decelerate_point_count = 0;
           for (const auto& p : points)
           {
             tf::Vector3 point_vector(p.x, p.y, 0);
             double distance = tf::tfDistance(point_vector, interpolated_point);
             if (distance > stop_range && distance < stop_range + deceleration_range && current_index_vel * p.x > 0)
             {
-              interpolated_decelerate_point_count++;
+              decelerate_point_count++;
               geometry_msgs::Point point_temp;
               point_temp.x = p.x;
               point_temp.y = p.y;
@@ -451,7 +464,7 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
           }
 
           // If the number of obstacle points at the interpolated point exceeds the threshold
-          if (interpolated_decelerate_point_count > points_threshold)
+          if (decelerate_point_count > points_threshold)
           {
             decelerate_obstacle_waypoint = i;  // Set the waypoint before the interpolated point as the obstacle
             break;
@@ -784,6 +797,7 @@ int main(int argc, char** argv)
   private_rosnode.param<double>("robot_length", g_robot_length, 0.0);
   private_rosnode.param<double>("robot_width", g_robot_width, 0.0);
   private_rosnode.param<double>("robot_base2back", g_robot_base2back, 0.0);
+  private_rosnode.param<bool>("ignore_side_detection", g_ignore_side_detection, true);
   g_use_robot_shape = g_robot_length > 0.0 && g_robot_width > 0.0;
 
   VelocitySetPath vs_path;
