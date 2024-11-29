@@ -65,7 +65,10 @@ void CostmapGeneratorLanelet2::init()
   private_nh_.param<double>("expand_polygon_size", expand_polygon_size_, 1.0);
   private_nh_.param<double>("expand_point_distance", expand_point_distance_, 0.2);
   private_nh_.param<int>("size_of_expansion_kernel", size_of_expansion_kernel_, 9);
-
+  private_nh_.param<double>("robot_width", robot_width_, 1.75);
+  private_nh_.param<double>("robot_length", robot_length_, 4.5);
+  private_nh_.param<double>("robot_base2back", robot_base2back_, 1.0);
+  private_nh_.param<bool>("remove_inside_cost", remove_inside_cost_, true);
   initGridmap();
 }
 
