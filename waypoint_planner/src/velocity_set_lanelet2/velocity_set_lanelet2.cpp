@@ -319,7 +319,6 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
         {
           tf::Vector3 interpolated_point = tf_waypoint_i + direction * search_step_distance * step;
 
-          int interpolated_stop_point_count = 0;
           for (const auto& p : points)
           {
             tf::Vector3 point_vector(p.x, p.y, 0);
@@ -338,7 +337,7 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
 
             if ((distance < stop_range || in_robot_shape) && current_index_vel * p.x > 0)
             {
-              interpolated_stop_point_count++;
+              stop_point_count++;
               geometry_msgs::Point point_temp;
               point_temp.x = p.x;
               point_temp.y = p.y;
@@ -347,16 +346,14 @@ int detectStopObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const int c
             }
           }
 
-          if (interpolated_stop_point_count > points_threshold)
+          if (stop_point_count > points_threshold)
           {
             stop_obstacle_waypoint = i;  // Set as the waypoint immediately before interpolation
             *obstacle_type = EObstacleType::ON_WAYPOINTS;
             break;
           }
-
           obstacle_points->clearStopPoints();
         }
-
         if (stop_obstacle_waypoint != -1)
           break;
       }
