@@ -68,7 +68,7 @@ void CostmapGeneratorLanelet2::init()
   private_nh_.param<double>("robot_width", robot_width_, 1.75);
   private_nh_.param<double>("robot_length", robot_length_, 4.5);
   private_nh_.param<double>("robot_base2back", robot_base2back_, 1.0);
-  private_nh_.param<bool>("remove_inside_cost", remove_inside_cost_, true);
+  private_nh_.param<bool>("remove_inside_robot", remove_inside_robot_, true);
   initGridmap();
 }
 
@@ -222,6 +222,11 @@ grid_map::Matrix CostmapGeneratorLanelet2::generateCombinedCostmap()
       combined_costmap[COMBINED_COSTMAP_LAYER_].cwiseMax(combined_costmap[OBJECTS_BOX_COSTMAP_LAYER_]);
   combined_costmap[COMBINED_COSTMAP_LAYER_] =
       combined_costmap[COMBINED_COSTMAP_LAYER_].cwiseMax(combined_costmap[OBJECTS_CONVEX_HULL_COSTMAP_LAYER_]);
+  // Clear the robot's internal area if the remove_inside_robot_ parameter is true
+  if (remove_inside_robot_)
+  {
+    clearInsideRobot(combined_costmap[COMBINED_COSTMAP_LAYER_]);
+  }
   return combined_costmap[COMBINED_COSTMAP_LAYER_];
 }
 
@@ -237,4 +242,32 @@ void CostmapGeneratorLanelet2::publishRosMsg(const grid_map::GridMap& costmap, c
   grid_map::GridMapRosConverter::toMessage(costmap, out_gridmap_msg);
   out_gridmap_msg.info.header = in_header;
   pub_costmap_.publish(out_gridmap_msg);
+}
+void CostmapGeneratorLanelet2::clearInsideRobot(grid_map::Matrix& costmap_layer)
+{
+  // Calculate the robot's internal area based on the parameters
+  double robot_half_width = robot_width_ / 2.0;           // Half of the robot's width
+  double robot_front = robot_length_ - robot_base2back_;  // Front of the robot
+  double robot_back = robot_base2back_;                   // Back of the robot
+
+  // Expand the robot's bounding box by one cell size in all directions
+  double resolution = costmap_.getResolution();  // Get the resolution of the costmap
+  double expanded_half_width = robot_half_width + resolution;
+  double expanded_front = robot_front + resolution;
+  double expanded_back = robot_back + resolution;
+
+  // Iterate through the costmap and clear the values inside the expanded robot's area
+  for (grid_map::GridMapIterator iterator(costmap_); !iterator.isPastEnd(); ++iterator)
+  {
+    grid_map::Index index(*iterator);  // Get the 2D index
+    grid_map::Position position;
+    costmap_.getPosition(index, position);
+
+    // Check if the current cell is within the expanded robot's area
+    if (position.x() >= -expanded_back && position.x() <= expanded_front && position.y() >= -expanded_half_width &&
+        position.y() <= expanded_half_width)
+    {
+      costmap_layer(index(0), index(1)) = grid_min_value_;  // Set the cost to the minimum value
+    }
+  }
 }
