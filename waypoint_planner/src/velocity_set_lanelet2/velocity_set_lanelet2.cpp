@@ -381,7 +381,7 @@ bool isPointInRobotCurrent2Waypoint(tf::Vector3 robot2point, tf::Vector3 robot2w
       if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
           robot2point.length() < robot2waypoint.length() + robot_width * 0.5)
       {
-        if (center2point_direction < center2robot_direction || center2point_direction > center2waypoint_direction)
+        if ((center2point_direction < center2robot_direction || center2point_direction > center2waypoint_direction))
         {
           return true;
         }
@@ -394,7 +394,7 @@ bool isPointInRobotCurrent2Waypoint(tf::Vector3 robot2point, tf::Vector3 robot2w
       if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
           robot2point.length() < robot2waypoint.length() + robot_width * 0.5)
       {
-        if (center2point_direction > center2robot_direction || center2point_direction < center2waypoint_direction)
+        if ((center2point_direction > center2robot_direction || center2point_direction < center2waypoint_direction))
         {
           return true;
         }
@@ -678,35 +678,14 @@ bool isPointInRangeCurrent2Waypoint(tf::Vector3 robot2point, tf::Vector3 robot2w
     tf::Vector3 center2point = robot2point - robot2center;
     tf::Vector3 center2point_rotated(center2point.x() * cos(-center_yaw) - center2point.y() * sin(-center_yaw),
                                      center2point.x() * sin(-center_yaw) + center2point.y() * cos(-center_yaw), 0);
-
-    double center2robot_direction = 0;
-    double center2waypoint_direction = 0;
-    double center2point_direction = normalizeAngle(atan2(center2point_rotated.y(), center2point_rotated.x()));
-    if (robot2waypoint.y() > 0)
+    double center2robot_direction = -fabs(center_yaw);
+    double center2waypoint_direction = fabs(center_yaw);
+    double center2point_direction = atan2(center2point_rotated.y(), center2point_rotated.x());
+    if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
+        robot2point.length() < robot2waypoint.length() + robot_width * 0.5 &&
+        center2point_direction > center2robot_direction && center2point_direction < center2waypoint_direction)
     {
-      center2robot_direction = normalizeAngle(-M_PI * 0.5 - center_yaw);
-      center2waypoint_direction = normalizeAngle(M_PI * 0.5 + center_yaw);
-      if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
-          robot2point.length() < robot2waypoint.length() + robot_width * 0.5)
-      {
-        if (center2point_direction > center2robot_direction && center2point_direction < center2waypoint_direction)
-        {
-          return true;
-        }
-      }
-    }
-    else
-    {
-      center2robot_direction = normalizeAngle(M_PI * 0.5 - center_yaw);
-      center2waypoint_direction = normalizeAngle(-M_PI * 0.5 + center_yaw);
-      if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
-          robot2point.length() < robot2waypoint.length() + robot_width * 0.5)
-      {
-        if (center2point_direction < center2robot_direction && center2point_direction > center2waypoint_direction)
-        {
-          return true;
-        }
-      }
+      return true;
     }
   }
   else
@@ -725,34 +704,14 @@ bool isPointInRangeCurrent2Waypoint(tf::Vector3 robot2point, tf::Vector3 robot2w
     center2point = robot2point - robot2center;
     tf::Vector3 center2point_rotated(center2point.x() * cos(-center_yaw) - center2point.y() * sin(-center_yaw),
                                      center2point.x() * sin(-center_yaw) + center2point.y() * cos(-center_yaw), 0);
-    double center2robot_direction = 0;
-    double center2waypoint_direction = 0;
+    double center2robot_direction = -fabs(center_yaw);
+    double center2waypoint_direction = fabs(center_yaw);
     double center2point_direction = atan2(center2point_rotated.y(), center2point_rotated.x());
-    if (robot2waypoint.y() > 0)
+    if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
+        robot2point.length() < robot2waypoint.length() + robot_width * 0.5 &&
+        (center2point_direction < center2robot_direction || center2point_direction > center2waypoint_direction))
     {
-      center2robot_direction = normalizeAngle(-M_PI * 0.5 - center_yaw);
-      center2waypoint_direction = normalizeAngle(M_PI * 0.5 + center_yaw);
-      if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
-          robot2point.length() < robot2waypoint.length() + range)
-      {
-        if (center2point_direction < center2robot_direction || center2point_direction > center2waypoint_direction)
-        {
-          return true;
-        }
-      }
-    }
-    else
-    {
-      center2robot_direction = normalizeAngle(M_PI * 0.5 - center_yaw);
-      center2waypoint_direction = normalizeAngle(-M_PI * 0.5 + center_yaw);
-      if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
-          robot2point.length() < robot2waypoint.length() + range)
-      {
-        if (center2point_direction > center2robot_direction || center2point_direction < center2waypoint_direction)
-        {
-          return true;
-        }
-      }
+      return true;
     }
   }
 
@@ -830,8 +789,7 @@ bool isPointInRangeWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_msg
   }
 
   // Straight movement
-  if (fabs(start2goal_direction) < 0.0001 || fabs(start2goal_direction) > M_PI - 0.0001 ||
-      fabs(start2goal_vertical_vector.x()) < 0.0001)
+  if (fabs(start2goal_direction) < 0.0001 || fabs(start2goal_vertical_vector.x()) < 0.0001)
   {
     if (fabs(start2point.y()) < range && start2point.x() < std::max(0.0, start2goal.x()) &&
         start2point.x() > std::min(0.0, start2goal.x()))
@@ -853,40 +811,20 @@ bool isPointInRangeWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_msg
     start2center.setY(std::min(std::max(start2center.y(), -1000000.0), 1000000.0));
     // Maximum radius of the arc of the robot's trajectory
     double trajectory_outside_radius = fabs(start2center.y()) + range;
-    double trajectory_inside_radius = std::min(0.0, fabs(start2center.y()) - range);
+    double trajectory_inside_radius = fabs(start2center.y()) - range;
     double center_yaw = atan2(start2goal_vertical_vector.y(), start2goal_vertical_vector.x());
     tf::Vector3 center2point;
     center2point = goal2point - start2center;
     tf::Vector3 center2point_rotated(center2point.x() * cos(-center_yaw) - center2point.y() * sin(-center_yaw),
                                      center2point.x() * sin(-center_yaw) + center2point.y() * cos(-center_yaw), 0);
-    double center2start_direction;
-    double center2goal_direction;
-    double center2point_direction = normalizeAngle(atan2(center2point_rotated.y(), center2point_rotated.x()));
-    if (start2goal_rotated.y() > 0)
+    double center2start_direction = -fabs(center_yaw);
+    double center2goal_direction = fabs(center_yaw);
+    double center2point_direction = atan2(center2point_rotated.y(), center2point_rotated.x());
+    if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
+        start2point.length() < robot_length - robot_base2back + range + robot2goal.length() &&
+        center2point_direction > center2start_direction && center2point_direction < center2goal_direction)
     {
-      center2start_direction = normalizeAngle(-M_PI * 0.5 - center_yaw);
-      center2goal_direction = normalizeAngle(M_PI * 0.5 + center_yaw);
-      if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
-          start2point.length() < start2goal.length() + range)
-      {
-        if (center2point_direction > center2start_direction && center2point_direction < center2goal_direction)
-        {
-          return true;
-        }
-      }
-    }
-    else
-    {
-      center2start_direction = normalizeAngle(M_PI * 0.5 - center_yaw);
-      center2goal_direction = normalizeAngle(-M_PI * 0.5 + center_yaw);
-      if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
-          start2point.length() < start2goal.length() + range)
-      {
-        if (center2point_direction > center2goal_direction && center2point_direction < center2start_direction)
-        {
-          return true;
-        }
-      }
+      return true;
     }
   }
   else
@@ -906,36 +844,18 @@ bool isPointInRangeWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_msg
     center2point = goal2point - start2center;
     tf::Vector3 center2point_rotated(center2point.x() * cos(-center_yaw) - center2point.y() * sin(-center_yaw),
                                      center2point.x() * sin(-center_yaw) + center2point.y() * cos(-center_yaw), 0);
-    double center2start_direction = 0;
-    double center2goal_direction = 0;
+    double center2start_direction = -fabs(center_yaw);
+    double center2goal_direction = fabs(center_yaw);
     double center2point_direction = atan2(center2point_rotated.y(), center2point_rotated.x());
-    if (start2goal_rotated.y() > 0)
+    if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
+        start2point.length() < start2goal.length() &&
+        (center2point_direction < center2start_direction || center2point_direction > center2goal_direction))
     {
-      center2start_direction = normalizeAngle(-M_PI * 0.5 - center_yaw);
-      center2goal_direction = normalizeAngle(M_PI * 0.5 + center_yaw);
-      if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
-          start2point.length() < start2goal.length() + range)
-      {
-        if ((center2point_direction < center2start_direction || center2point_direction > center2goal_direction))
-        {
-          return true;
-        }
-      }
-    }
-    else
-    {
-      center2start_direction = normalizeAngle(M_PI * 0.5 - center_yaw);
-      center2goal_direction = normalizeAngle(-M_PI * 0.5 + center_yaw);
-      if (center2point.length() > trajectory_inside_radius && center2point.length() < trajectory_outside_radius &&
-          start2point.length() < start2goal.length() + range)
-      {
-        if ((center2point_direction > center2start_direction || center2point_direction < center2goal_direction))
-        {
-          return true;
-        }
-      }
+      return true;
     }
   }
+
+  return false;
 }
 
 // same as velocity_set.cpp - except for no reference to vector maps or crosswalk
