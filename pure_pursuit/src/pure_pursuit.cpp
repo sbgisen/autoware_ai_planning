@@ -16,6 +16,7 @@
 
 #include <pure_pursuit/pure_pursuit.h>
 #include <cmath>
+#include "geometry_msgs/Pose.h"
 #include "libwaypoint_follower/libwaypoint_follower.h"
 #include "ros/console.h"
 
@@ -183,8 +184,33 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
 
   // Check target velocity
   output_velocity = getCurrentCommandVelocity(current_lane, current_waypoint_index_, current_pose_);
-  next_target_position_ = current_waypoints_.at(target_waypoint_index_).pose.pose.position;
+  geometry_msgs::Pose next_target_relative_pose =
+      getRelativePose(current_pose_, current_waypoints_.at(target_waypoint_index_).pose.pose);
+
+  // Recovery mode
+  if (next_target_relative_pose.position.x * output_velocity < 0)
+  {
+    if (output_velocity > std::numeric_limits<double>::epsilon())
+    {
+      output_velocity = std::min(output_velocity, RECOVERY_VEL_);
+    }
+    else
+    {
+      output_velocity = std::max(output_velocity, -RECOVERY_VEL_);
+    }
+
+    if (next_target_relative_pose.position.y < 0)
+    {
+      output_kappa = -1.0 / RADIUS_MIN_;
+    }
+    else
+    {
+      output_kappa = 1.0 / RADIUS_MIN_;
+    }
+    return true;
+  }
   // Verify if curvature can be calculated based on lookahead distance
+  next_target_position_ = current_waypoints_.at(target_waypoint_index_).pose.pose.position;
   if (getPlaneDistance(next_target_position_, current_pose_.position) < minimum_lookahead_distance_)
   {
     // No valid points beyond lookahead distance -> Creating virtual target

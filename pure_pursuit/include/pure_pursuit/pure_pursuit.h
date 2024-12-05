@@ -107,7 +107,7 @@ private:
   // constant
   static constexpr double RADIUS_MAX_ = 9e10;
   static constexpr double RADIUS_MIN_ = 0.3;
-  static constexpr double RECOVERY_VEL = 0.2;
+  static constexpr double RECOVERY_VEL_ = 0.2;
 
   // variables
   bool is_linear_interpolation_{ false };
