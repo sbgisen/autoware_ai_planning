@@ -1200,13 +1200,13 @@ void displayDetectionRange(const autoware_msgs::Lane& lane, const lanelet::Const
   crosswalk_marker.color.g = 1.0;
   crosswalk_marker.color.b = 0.0;
 
-  for (const auto crosswalk_ll : closest_crosswalks)
+  for (const auto& crosswalk_ll : closest_crosswalks)
   {
     std::vector<geometry_msgs::Polygon> triangles;
     lanelet::visualization::lanelet2Triangle(crosswalk_ll, &triangles);
-    for (const auto t : triangles)
+    for (const auto& t : triangles)
     {
-      for (const auto p_32 : t.points)
+      for (const auto& p_32 : t.points)
       {
         geometry_msgs::Point pt;
         lanelet::utils::conversion::toGeomMsgPt(p_32, &pt);
