@@ -251,7 +251,7 @@ void CostmapGeneratorLanelet2::clearInsideRobot(grid_map::Matrix& costmap_layer)
   double robot_back = robot_base2back_;                   // Back of the robot
 
   // Expand the robot's bounding box by one cell size in all directions
-  double resolution = costmap_.getResolution();  // Get the resolution of the costmap
+  double resolution = 2.0 * costmap_.getResolution();  // Get the resolution of the costmap
   double expanded_half_width = robot_half_width + resolution;
   double expanded_front = robot_front + resolution;
   double expanded_back = robot_back + resolution;
