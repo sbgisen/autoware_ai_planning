@@ -229,7 +229,7 @@ bool isPointInRobotCurrent2Waypoint(tf::Vector3 robot2point, tf::Vector3 robot2w
                                     const double robot_width, const double robot_base2back, const double margin,
                                     const bool ignore_side_detection)
 {
-  bool search_forwards = robot_vel > 0.0;
+  bool search_forwards = !(robot_vel < -std::numeric_limits<double>::epsilon());
   if (robot2point.length() > obstacle_search_range)
   {
     return false;
@@ -288,9 +288,8 @@ bool isPointInRobotCurrent2Waypoint(tf::Vector3 robot2point, tf::Vector3 robot2w
   if (fabs(robot2waypoint_direction) < 0.0001 || fabs(robot2waypoint_direction) > M_PI - 0.0001 ||
       fabs(robot2waypoint_vertical_vector.x()) < 0.0001)
   {
-    if (fabs(robot2point.y()) < robot_width * 0.5 + margin &&
-        robot2point.x() < std::max(0.0, robot2waypoint.x()) + robot_length - robot_base2back &&
-        robot2point.x() > std::min(0.0, robot2waypoint.x()) - robot_base2back)
+    if (fabs(robot2point.y()) < robot_width * 0.5 + margin && robot2point.x() < std::max(0.0, robot2waypoint.x()) &&
+        robot2point.x() > std::min(0.0, robot2waypoint.x()))
     {
       return true;
     }
@@ -441,7 +440,7 @@ bool isPointInRobotWaypoint2Waypoint(const tf::Vector3 robot2point, const geomet
   {
     start2goal_vertical_vector = -start2goal_vertical_vector;
   }
-  bool search_forwards = start2goal_rotated.x() > 0;
+  bool search_forwards = !(start2goal_rotated.x() < -std::numeric_limits<double>::epsilon());
   if (search_forwards)
   {
     if (start2point_rotated.x() < -robot_base2back)
@@ -479,8 +478,8 @@ bool isPointInRobotWaypoint2Waypoint(const tf::Vector3 robot2point, const geomet
       fabs(start2goal_direction) > M_PI - 0.0001 || fabs(start2goal_vertical_vector.x()) < 0.0001)
   {
     if (fabs(start2point_rotated.y()) < robot_width * 0.5 + margin &&
-        start2point_rotated.x() < std::max(0.0, start2goal.x()) + robot_length - robot_base2back &&
-        start2point_rotated.x() > std::min(0.0, start2goal.x()) - robot_base2back)
+        start2point_rotated.x() < std::max(0.0, start2goal.x()) &&
+        start2point_rotated.x() > std::min(0.0, start2goal.x()))
     {
       return true;
     }
@@ -597,7 +596,7 @@ bool isPointInRangeCurrent2Waypoint(tf::Vector3 robot2point, tf::Vector3 robot2w
                                     const double robot_width, const double robot_base2back,
                                     const bool ignore_side_detection)
 {
-  bool search_forwards = robot_vel > 0.0;
+  bool search_forwards = !(robot_vel < -std::numeric_limits<double>::epsilon());
   if (robot2point.length() > obstacle_search_range)
   {
     return false;
@@ -744,7 +743,7 @@ bool isPointInRangeWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_msg
   tf::Vector3 goal2point = robot2point - robot2goal;
   tf::Vector3 goal2point_rotated(goal2point.x() * cos(-robot2start_yaw) - goal2point.y() * sin(-robot2start_yaw),
                                  goal2point.x() * sin(-robot2start_yaw) + goal2point.y() * cos(-robot2start_yaw), 0);
-  bool search_forwards = goal2point_rotated.x() > 0;
+  bool search_forwards = !(goal2point_rotated.x() < -std::numeric_limits<double>::epsilon());
   if (search_forwards)
   {
     if (start2point_rotated.x() < -robot_base2back)
