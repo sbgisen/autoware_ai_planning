@@ -459,7 +459,7 @@ bool isPointInRobotWaypoint2Waypoint(const tf::Vector3 robot2point, const geomet
     {
       return false;
     }
-    else if (start2point_rotated.x() > -robot_base2back - margin - margin &&
+    else if (start2point_rotated.x() > -robot_base2back - margin &&
              fabs(start2point_rotated.y()) < robot_width / 2.0 + margin)
     {
       return true;
