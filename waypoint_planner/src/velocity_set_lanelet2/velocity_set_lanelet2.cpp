@@ -266,7 +266,9 @@ bool isPointInRobotCurrent2Waypoint(tf::Vector3 robot2point, tf::Vector3 robot2w
   }
 
   tf::Vector3 waypoint2point = robot2point - robot2waypoint;
-  if (waypoint2point.length() < robot_width / 2.0 + margin)
+  if (waypoint2point.length() < robot_width * 0.5 + margin ||
+      (waypoint2point.x() > -robot_base2back - margin && waypoint2point.x() < robot_length - robot_base2back + margin &&
+       fabs(waypoint2point.y()) < robot_width * 0.5 + margin))
   {
     if ((search_forwards && robot2point.x() > 0) || (!search_forwards && robot2point.x() < 0))
     {
@@ -470,7 +472,9 @@ bool isPointInRobotWaypoint2Waypoint(const tf::Vector3 robot2point, const geomet
   }
 
   tf::Vector3 goal2point = robot2point - robot2goal;
-  if (goal2point.length() < robot_width * 0.5 + margin)
+  if (goal2point.length() < robot_width * 0.5 + margin ||
+      (goal2point.x() > -robot_base2back - margin && goal2point.x() < robot_length - robot_base2back + margin &&
+       fabs(goal2point.y()) < robot_width / 2.0 + margin))
   {
     if ((search_forwards && start2point_rotated.x() > 0) || (!search_forwards && start2point_rotated.x() < 0))
     {
