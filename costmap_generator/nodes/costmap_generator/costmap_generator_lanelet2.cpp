@@ -259,13 +259,13 @@ void CostmapGeneratorLanelet2::clearInsideRobot(grid_map::Matrix& costmap_layer)
   // Iterate through the costmap and clear the values inside the expanded robot's area
   for (grid_map::GridMapIterator iterator(costmap_); !iterator.isPastEnd(); ++iterator)
   {
-    grid_map::Index index(*iterator);  // Get the 2D index
+    // Get the 2D index
+    grid_map::Index index(*iterator);
     grid_map::Position position;
     costmap_.getPosition(index, position);
-
     // Check if the current cell is within the expanded robot's area
-    if (position.x() >= -expanded_back && position.x() <= expanded_front && position.y() >= -expanded_half_width &&
-        position.y() <= expanded_half_width)
+    if (position.x() > -expanded_back - resolution * 0.5 && position.x() < expanded_front + resolution * 0.5 &&
+        fabs(position.y()) < expanded_half_width + resolution * 0.5)
     {
       costmap_layer(index(0), index(1)) = grid_min_value_;  // Set the cost to the minimum value
     }
