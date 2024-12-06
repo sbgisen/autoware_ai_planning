@@ -229,7 +229,8 @@ bool isPointInRobotCurrent2Waypoint(const tf::Vector3 robot2point, const geometr
                                     const double robot_length, const double robot_width, const double robot_base2back,
                                     const double margin, const bool ignore_side_detection)
 {
-  bool search_forwards = !(robot_vel < -std::numeric_limits<double>::epsilon());
+  bool search_forwards = !(robot2goal_pose.position.x < -std::numeric_limits<double>::epsilon());
+  bool vel_forwards = !(robot_vel < -std::numeric_limits<double>::epsilon());
 
   // Check if the point is in the search range
   if (robot2point.length() > obstacle_search_range)
@@ -245,7 +246,7 @@ bool isPointInRobotCurrent2Waypoint(const tf::Vector3 robot2point, const geometr
   }
 
   // Start pose collision detection
-  if (search_forwards)
+  if (vel_forwards)
   {
     if (robot2point.x() < 0.0)
     {
@@ -280,13 +281,14 @@ bool isPointInRobotCurrent2Waypoint(const tf::Vector3 robot2point, const geometr
   double goal_yaw = tf::getYaw(robot2goal_pose.orientation);
   tf::Vector3 goal2point_rotated(goal2point.x() * cos(-goal_yaw) - goal2point.y() * sin(-goal_yaw),
                                  goal2point.x() * sin(-goal_yaw) + goal2point.y() * cos(-goal_yaw), 0);
-  if (search_forwards && goal2point_rotated.x() > 0 &&
+  if ((vel_forwards || search_forwards) && goal2point_rotated.x() > 0 &&
       goal2point_rotated.x() < robot_length - robot_base2back + margin &&
       fabs(goal2point_rotated.y()) < robot_width * 0.5 + margin)
   {
     return true;
   }
-  else if (!search_forwards && goal2point_rotated.x() < 0 && goal2point_rotated.x() > -robot_base2back - margin &&
+  else if ((!vel_forwards || search_forwards) && goal2point_rotated.x() < 0 &&
+           goal2point_rotated.x() > -robot_base2back - margin &&
            fabs(goal2point_rotated.y()) < robot_width * 0.5 + margin)
   {
     return true;
@@ -441,10 +443,11 @@ bool isPointInRobotWaypoint2Waypoint(const tf::Vector3 robot2point, const geomet
   tf::Vector3 start2goal_rotated(start2goal.x() * cos(-robot2start_yaw) - start2goal.y() * sin(-robot2start_yaw),
                                  start2goal.x() * sin(-robot2start_yaw) + start2goal.y() * cos(-robot2start_yaw), 0);
   bool search_forwards = !(start2goal_rotated.x() < -std::numeric_limits<double>::epsilon());
+  bool vel_forwards = !(start_vel < -std::numeric_limits<double>::epsilon());
   tf::Vector3 start2point = robot2point - robot2start;
   tf::Vector3 start2point_rotated(start2point.x() * cos(-robot2start_yaw) - start2point.y() * sin(-robot2start_yaw),
                                   start2point.x() * sin(-robot2start_yaw) + start2point.y() * cos(-robot2start_yaw), 0);
-  if (search_forwards)
+  if (vel_forwards)
   {
     if (start2point_rotated.x() < 0.0)
     {
@@ -479,13 +482,14 @@ bool isPointInRobotWaypoint2Waypoint(const tf::Vector3 robot2point, const geomet
   tf::Vector3 goal2point_rotated(goal2point.x() * cos(-goal_yaw) - goal2point.y() * sin(-goal_yaw),
                                  goal2point.x() * sin(-goal_yaw) + goal2point.y() * cos(-goal_yaw), 0);
 
-  if (search_forwards && goal2point_rotated.x() > 0.0 &&
+  if ((search_forwards || vel_forwards) && goal2point_rotated.x() > 0.0 &&
       goal2point_rotated.x() < robot_length - robot_base2back + margin &&
       fabs(goal2point_rotated.y()) < robot_width * 0.5 + margin)
   {
     return true;
   }
-  else if (!search_forwards && goal2point_rotated.x() < 0.0 && goal2point_rotated.x() > -robot_base2back - margin &&
+  else if ((!search_forwards || !vel_forwards) && goal2point_rotated.x() < 0.0 &&
+           goal2point_rotated.x() > -robot_base2back - margin &&
            fabs(goal2point_rotated.y()) < robot_width * 0.5 + margin)
   {
     return true;
@@ -622,7 +626,8 @@ bool isPointInRangeCurrent2Waypoint(tf::Vector3 robot2point, const geometry_msgs
   {
     return false;
   }
-  bool search_forwards = !(robot_vel < -std::numeric_limits<double>::epsilon());
+  bool search_forwards = !(robot2goal_pose.position.x < -std::numeric_limits<double>::epsilon());
+  bool vel_forwards = !(robot_vel < -std::numeric_limits<double>::epsilon());
 
   if (ignore_side_detection)
   {
@@ -633,7 +638,7 @@ bool isPointInRangeCurrent2Waypoint(tf::Vector3 robot2point, const geometry_msgs
   }
 
   // Start pose collision detection
-  if (search_forwards)
+  if (vel_forwards)
   {
     if (robot2point.x() < 0.0)
     {
@@ -666,11 +671,11 @@ bool isPointInRangeCurrent2Waypoint(tf::Vector3 robot2point, const geometry_msgs
   double goal_yaw = tf::getYaw(robot2goal_pose.orientation);
   tf::Vector3 goal2point_rotated(goal2point.x() * cos(-goal_yaw) - goal2point.y() * sin(-goal_yaw),
                                  goal2point.x() * sin(-goal_yaw) + goal2point.y() * cos(-goal_yaw), 0);
-  if (search_forwards && goal2point_rotated.x() > 0.0 && goal2point.length() < range)
+  if ((vel_forwards || search_forwards) && goal2point_rotated.x() > 0.0 && goal2point.length() < range)
   {
     return true;
   }
-  else if (!search_forwards && goal2point_rotated.x() < 0.0 && goal2point.length() < range)
+  else if ((!vel_forwards || !search_forwards) && goal2point_rotated.x() < 0.0 && goal2point.length() < range)
   {
     return true;
   }
@@ -823,6 +828,7 @@ bool isPointInRangeWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_msg
                                  start2goal.x() * sin(-robot2start_yaw) + start2goal.y() * cos(-robot2start_yaw), 0);
 
   bool search_forwards = !(start2goal_rotated.x() < -std::numeric_limits<double>::epsilon());
+  bool vel_forwards = !(start_vel < -std::numeric_limits<double>::epsilon());
   if (search_forwards)
   {
     if (start2point_rotated.x() < 0)
@@ -851,11 +857,12 @@ bool isPointInRangeWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_msg
   {
     return false;
   }
-  if (search_forwards && goal2point_rotated.x() > 0.0 && goal2point_rotated.length() < range)
+
+  if ((search_forwards || vel_forwards) && goal2point_rotated.x() > 0.0 && goal2point_rotated.length() < range)
   {
     return true;
   }
-  else if (!search_forwards && goal2point_rotated.x() < 0.0 && goal2point_rotated.length() < range)
+  else if ((!search_forwards || !vel_forwards) && goal2point_rotated.x() < 0.0 && goal2point_rotated.length() < range)
   {
     return true;
   }
