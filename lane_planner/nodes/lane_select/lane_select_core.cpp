@@ -144,7 +144,7 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     return;
 
   // search closest waypoint number for each lanes
-  if (!updateClosestIndexForEachLane())
+  if (!updateCurrentIndexForEachLane())
   {
     publishClosestWaypoint(-1);
     publishVehicleLocation(-1, lane_array_id_);
@@ -155,7 +155,7 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
 
   if (current_lane_idx_ == -1)
   {
-    // Note: Only call it after calling updateClosestIndexForEachLane()
+    // Note: Only call it after calling updateCurrentIndexForEachLane()
     ROS_INFO_THROTTLE(2, "[LaneSelectNode::processing] current_lane_idx_ == -1. Search current lane.");
     findCurrentLane();
   }
@@ -167,7 +167,8 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     try
     {
       changeLane();
-      std::get<1>(lane_for_change_) = getClosestIndex(std::get<0>(lane_for_change_), current_pose_.pose);
+      std::get<1>(lane_for_change_) =
+          updateCurrentIndex(std::get<0>(lane_for_change_), current_pose_.pose, std::get<1>(lane_for_change_));
       std::get<2>(lane_for_change_) = static_cast<ChangeFlag>(
           std::get<0>(lane_for_change_).waypoints.at(std::get<1>(lane_for_change_)).change_flag);
       publishLane(std::get<0>(lane_for_change_));
@@ -321,11 +322,11 @@ void LaneSelectNode::changeLane()
   return;
 }
 
-bool LaneSelectNode::updateClosestIndexForEachLane()
+bool LaneSelectNode::updateCurrentIndexForEachLane()
 {
   for (auto& el : tuple_vec_)
   {
-    std::get<1>(el) = getClosestIndex(std::get<0>(el), current_pose_.pose);
+    std::get<1>(el) = updateCurrentIndex(std::get<0>(el), current_pose_.pose, std::get<1>(el));
   }
 
   // confirm if all closest waypoint numbers are -1. If so, output warning

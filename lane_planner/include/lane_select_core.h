@@ -151,7 +151,7 @@ private:
   void publishClosestWaypoint(const int32_t clst_wp);
   void publishChangeFlag(const ChangeFlag flag);
   void publishVehicleLocation(const int32_t clst_wp, const int32_t larray_id);
-  bool updateClosestIndexForEachLane();
+  bool updateCurrentIndexForEachLane();
   int32_t findMostClosestLane(const std::vector<uint32_t> idx_vec, const geometry_msgs::Point p);
   void findCurrentLane();
   void findNeighborLanes();
