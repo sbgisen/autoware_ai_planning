@@ -127,8 +127,8 @@ private:
   tf::Transform getTransform(const std::string& from, const std::string& to);
 
   // Find closest waypoint index within a search_size around the previous closest waypoint
-  int updateClosestWaypoint(const autoware_msgs::Lane& waypoints, const int previous_index,
-                            const geometry_msgs::Pose& pose, const int& search_size);
+  int updateClosestIndex(const autoware_msgs::Lane& waypoints, const int previous_index,
+                         const geometry_msgs::Pose& pose, const int& search_size);
   // publish safety waypoints using a timer
   void publishWaypoints(const ros::TimerEvent& e);
 };

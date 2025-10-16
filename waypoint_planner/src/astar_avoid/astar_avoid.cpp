@@ -389,8 +389,7 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   }
 
   // Update the current point in the selected lane.
-  next_index =
-      updateClosestWaypoint(current_waypoints_, current_index, current_pose_global_.pose, closest_search_size_);
+  next_index = updateClosestIndex(current_waypoints_, current_index, current_pose_global_.pose, closest_search_size_);
 
   if (next_index == -1)
   {
@@ -452,8 +451,8 @@ tf::Transform AstarAvoid::getTransform(const std::string& from, const std::strin
   return stf;
 }
 
-int AstarAvoid::updateClosestWaypoint(const autoware_msgs::Lane& waypoints, const int previous_index,
-                                      const geometry_msgs::Pose& pose, const int& search_size)
+int AstarAvoid::updateClosestIndex(const autoware_msgs::Lane& waypoints, const int previous_index,
+                                   const geometry_msgs::Pose& pose, const int& search_size)
 {
   int next_index = previous_index;
   // search in all waypoints if lane_select judges you're not on waypoints
@@ -483,7 +482,7 @@ int AstarAvoid::updateClosestWaypoint(const autoware_msgs::Lane& waypoints, cons
     }
     else
     {
-      ROS_WARN("[AstarAvoid::updateClosestWaypoint] getClosestIndex failed, -> RELAYING");
+      ROS_WARN("[AstarAvoid::updateClosestIndex] getClosestIndex failed, -> RELAYING");
       state_ = AstarAvoid::STATE::RELAYING;
       select_way_ = AstarAvoid::STATE::RELAYING;
       next_index = closest_waypoint_index_;

@@ -144,7 +144,7 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     return;
 
   // search closest waypoint number for each lanes
-  if (!updateClosestWaypointNumberForEachLane())
+  if (!updateClosestIndexForEachLane())
   {
     publishClosestWaypoint(-1);
     publishVehicleLocation(-1, lane_array_id_);
@@ -155,7 +155,7 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
 
   if (current_lane_idx_ == -1)
   {
-    // Note: Only call it after calling updateClosestWaypointNumberForEachLane()
+    // Note: Only call it after calling updateClosestIndexForEachLane()
     ROS_INFO_THROTTLE(2, "[LaneSelectNode::processing] current_lane_idx_ == -1. Search current lane.");
     findCurrentLane();
   }
@@ -323,7 +323,7 @@ void LaneSelectNode::changeLane()
   return;
 }
 
-bool LaneSelectNode::updateClosestWaypointNumberForEachLane()
+bool LaneSelectNode::updateClosestIndexForEachLane()
 {
   for (auto& el : tuple_vec_)
   {
