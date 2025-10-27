@@ -102,15 +102,15 @@ void AstarAvoid::run()
   }
 
   // main loop
-  ros::WallTime start_plan_time = ros::WallTime::now();
   ros::WallTime start_avoid_time = ros::WallTime::now();
 
   // reset obstacle index
   obstacle_local_index_ = -1;
 
   // relaying mode at startup
-  state_ = AstarAvoid::STATE::RELAYING;
-  select_way_ = AstarAvoid::STATE::RELAYING;
+  astar_plan_status_ = AstarAvoid::AsterPlanStatus::IDLE;
+  select_way_ = AstarAvoid::WayType::RELAY;
+  is_move_ = false;
 
   // Kick off a timer to publish final waypoints
   timer_ = nh_.createTimer(ros::Duration(1.0 / update_rate_), &AstarAvoid::publishWaypoints, this);
@@ -128,7 +128,7 @@ void AstarAvoid::run()
 
     // avoidance mode
     bool found_obstacle = (obstacle_local_index_ >= 0);
-    bool start_plan = (obstacle_local_index_ <= plan_start_index_ && found_obstacle);
+    bool request_aster_planning = found_obstacle && (obstacle_local_index_ <= search_waypoints_size_);
 
     // update state
     if (state_ == AstarAvoid::STATE::RELAYING)

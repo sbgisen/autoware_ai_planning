@@ -36,14 +36,19 @@
 class AstarAvoid
 {
 public:
-  typedef enum STATE
+  enum WayType : int8_t
   {
-    INITIALIZING = -1,
-    RELAYING = 0,
-    STOPPING = 1,
-    PLANNING = 2,
-    AVOIDING = 3
-  } State;
+    RELAY = 0,
+    AVOID = 1
+  };
+
+  enum AsterPlanStatus : int8_t
+  {
+    IDLE = 0,
+    PLAN = 1,
+    SUCCESS = 2,
+    FAILURE = 3
+  };
 
   AstarAvoid();
   ~AstarAvoid() = default;
@@ -78,7 +83,7 @@ private:
 
   // classes
   AstarSearch astar_;
-  State state_;
+  AsterPlanStatus astar_plan_status_;
 
   // variables
   bool found_avoid_path_;
@@ -86,7 +91,8 @@ private:
   // Index of the closest waypoint in the current_waypoints_ Lane.
   // Not the same as the waypoint gid. This value can change suddenly if the
   // current_waypoints_ switches between global_waypoints_ and avoid_merged_waypoints_.
-  State select_way_;
+  WayType select_way_;
+  bool is_move_;
   int closest_global_index_ = -1;
   int avoid_current_merged_index_ = -1;
   int avoid_start_global_index_ = -1;
