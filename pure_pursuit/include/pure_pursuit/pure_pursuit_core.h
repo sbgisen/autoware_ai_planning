@@ -106,9 +106,11 @@ private:
   void initForROS();
 
   // functions
-  void publishControlCommands(const bool& can_get_curvature, const double& kappa) const;
-  void publishTwistStamped(const bool& can_get_curvature, const double& kappa) const;
-  void publishCtrlCmdStamped(const bool& can_get_curvature, const double& kappa) const;
+  void publishControlCommands(const bool& can_get_curvature, const double& kappa, const double& velocity,
+                              const double& accel) const;
+  void publishTwistStamped(const bool& can_get_curvature, const double& kappa, const double& velocity) const;
+  void publishCtrlCmdStamped(const bool& can_get_curvature, const double& kappa, const double& velocity,
+                             const double& accel) const;
   void publishDeviationCurrentPosition(const geometry_msgs::Point& point,
                                        const std::vector<autoware_msgs::Waypoint>& waypoints) const;
   void connectVirtualLastWaypoints(autoware_msgs::Lane* expand_lane, LaneDirection direction);
@@ -117,8 +119,6 @@ private:
   void checkCurrentStatusTimeout();
   void checkTargetWaypointTimeout();
   double computeLookaheadDistance() const;
-  double computeCommandVelocity() const;
-  double computeCommandAccel() const;
   double computeAngularGravity(double velocity, double kappa) const;
 };
 

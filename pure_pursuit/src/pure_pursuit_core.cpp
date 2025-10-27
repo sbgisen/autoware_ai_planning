@@ -115,6 +115,7 @@ void PurePursuitNode::initForROS()
 
 void PurePursuitNode::run()
 {
+  double target_linear_velocity = 0;
   ros::Rate loop_rate(update_rate_);
   while (ros::ok())
   {
@@ -135,7 +136,7 @@ void PurePursuitNode::run()
       {
         ROS_WARN_THROTTLE(5, "Waiting for current_velocity topic ...");
       }
-      // publishControlCommands(false, 0);
+      publishControlCommands(false, 0, 0, 0);
       loop_rate.sleep();
       continue;
     }
@@ -143,10 +144,26 @@ void PurePursuitNode::run()
     pp_.setLookaheadDistance(computeLookaheadDistance());
     pp_.setMinimumLookaheadDistance(minimum_lookahead_distance_);
 
+    // Get target velocity
     double kappa = 0;
-    bool can_get_curvature = pp_.canGetCurvature(&kappa);
+    bool can_get_curvature = pp_.canGetCurvature(kappa, target_linear_velocity);
 
-    publishControlCommands(can_get_curvature, kappa);
+    // Get target acceleration
+    const geometry_msgs::Pose current_pose = pp_.getCurrentPose();
+    const geometry_msgs::Pose target_pose = pp_.getCurrentWaypoints().at(1).pose.pose;
+    const double dx = target_pose.position.x - current_pose.position.x;
+    const double dy = target_pose.position.y - current_pose.position.y;
+    const double distance = std::hypot(dx, dy);
+    double target_linear_accel = 0.0;
+    if (distance > 1e-6)
+    {
+      target_linear_accel =
+          (target_linear_velocity * target_linear_velocity - current_linear_velocity_ * current_linear_velocity_) /
+          (2.0 * distance);
+    }
+
+    // Publish control commands
+    publishControlCommands(can_get_curvature, kappa, target_linear_velocity, target_linear_accel);
     health_checker_ptr_->NODE_ACTIVATE();
     health_checker_ptr_->CHECK_RATE("topic_rate_vehicle_cmd_slow", 8, 5, 1, "topic vehicle_cmd publish rate slow.");
     // for visualization with Rviz
@@ -160,7 +177,7 @@ void PurePursuitNode::run()
       pub18_.publish(displayExpandWaypoints(pp_.getCurrentWaypoints(), expand_size_));
     }
     std_msgs::Float32 angular_gravity_msg;
-    angular_gravity_msg.data = computeAngularGravity(computeCommandVelocity(), kappa);
+    angular_gravity_msg.data = computeAngularGravity(target_linear_velocity, kappa);
     pub16_.publish(angular_gravity_msg);
 
     publishDeviationCurrentPosition(pp_.getCurrentPose().position, pp_.getCurrentWaypoints());
@@ -168,20 +185,21 @@ void PurePursuitNode::run()
   }
 }
 
-void PurePursuitNode::publishControlCommands(const bool& can_get_curvature, const double& kappa) const
+void PurePursuitNode::publishControlCommands(const bool& can_get_curvature, const double& kappa, const double& velocity,
+                                             const double& accel) const
 {
   if (output_interface_ == "twist")
   {
-    publishTwistStamped(can_get_curvature, kappa);
+    publishTwistStamped(can_get_curvature, kappa, velocity);
   }
   else if (output_interface_ == "ctrl_cmd")
   {
-    publishCtrlCmdStamped(can_get_curvature, kappa);
+    publishCtrlCmdStamped(can_get_curvature, kappa, velocity, accel);
   }
   else if (output_interface_ == "all")
   {
-    publishTwistStamped(can_get_curvature, kappa);
-    publishCtrlCmdStamped(can_get_curvature, kappa);
+    publishTwistStamped(can_get_curvature, kappa, velocity);
+    publishCtrlCmdStamped(can_get_curvature, kappa, velocity, accel);
   }
   else
   {
@@ -189,21 +207,23 @@ void PurePursuitNode::publishControlCommands(const bool& can_get_curvature, cons
   }
 }
 
-void PurePursuitNode::publishTwistStamped(const bool& can_get_curvature, const double& kappa) const
+void PurePursuitNode::publishTwistStamped(const bool& can_get_curvature, const double& kappa,
+                                          const double& velocity) const
 {
   geometry_msgs::TwistStamped ts;
   ts.header.stamp = ros::Time::now();
-  ts.twist.linear.x = can_get_curvature ? computeCommandVelocity() : 0;
-  ts.twist.angular.z = can_get_curvature ? kappa * ts.twist.linear.x : 0;
+  ts.twist.linear.x = can_get_curvature ? velocity : 0;
+  ts.twist.angular.z = can_get_curvature ? kappa * fabs(velocity) : 0;
   pub1_.publish(ts);
 }
 
-void PurePursuitNode::publishCtrlCmdStamped(const bool& can_get_curvature, const double& kappa) const
+void PurePursuitNode::publishCtrlCmdStamped(const bool& can_get_curvature, const double& kappa, const double& velocity,
+                                            const double& accel) const
 {
   autoware_msgs::ControlCommandStamped ccs;
   ccs.header.stamp = ros::Time::now();
-  ccs.cmd.linear_velocity = can_get_curvature ? computeCommandVelocity() : 0;
-  ccs.cmd.linear_acceleration = can_get_curvature ? computeCommandAccel() : 0;
+  ccs.cmd.linear_velocity = can_get_curvature ? velocity : 0;
+  ccs.cmd.linear_acceleration = can_get_curvature ? accel : 0;
   ccs.cmd.steering_angle = can_get_curvature ? convertCurvatureToSteeringAngle(wheel_base_, kappa) : 0;
   pub2_.publish(ccs);
 }
@@ -260,29 +280,6 @@ int PurePursuitNode::getSgn() const
     sgn = -1;
   }
   return sgn;
-}
-
-double PurePursuitNode::computeCommandVelocity() const
-{
-  if (velocity_source_ == enumToInteger(Mode::dialog))
-  {
-    return getSgn() * kmph2mps(const_velocity_);
-  }
-
-  return command_linear_velocity_;
-}
-
-// Assume constant acceleration motion, v_f^2 - v_i^2 = 2 * a * delta_d
-double PurePursuitNode::computeCommandAccel() const
-{
-  const geometry_msgs::Pose current_pose = pp_.getCurrentPose();
-  const geometry_msgs::Pose target_pose = pp_.getCurrentWaypoints().at(1).pose.pose;
-
-  const double delta_d =
-      std::hypot(target_pose.position.x - current_pose.position.x, target_pose.position.y - current_pose.position.y);
-  const double v_i = current_linear_velocity_;
-  const double v_f = computeCommandVelocity();
-  return (v_f * v_f - v_i * v_i) / (2 * delta_d);
 }
 
 double PurePursuitNode::computeAngularGravity(double velocity, double kappa) const
@@ -344,7 +341,23 @@ void PurePursuitNode::callbackFromCurrentVelocity(const geometry_msgs::TwistStam
 
 void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& msg)
 {
-  command_linear_velocity_ = (!msg->waypoints.empty()) ? msg->waypoints.at(0).twist.twist.linear.x : 0;
+  command_linear_velocity_ = 0;
+  if (!msg->waypoints.empty())
+  {
+    command_linear_velocity_ = msg->waypoints.at(0).twist.twist.linear.x;
+    if (msg->waypoints.size() > 1)
+    {
+      command_linear_velocity_ = msg->waypoints.at(1).twist.twist.linear.x;
+    }
+  }
+  else
+  {
+    ROS_WARN("Received empty waypoints");
+    command_linear_velocity_ = 0;
+    is_waypoint_set_ = false;
+    return;
+  }
+
   if (add_virtual_end_waypoints_)
   {
     const LaneDirection solved_dir = getLaneDirection(*msg);
@@ -360,7 +373,6 @@ void PurePursuitNode::callbackFromWayPoints(const autoware_msgs::LaneConstPtr& m
     pp_.setCurrentWaypoints(msg->waypoints);
   }
   is_waypoint_set_ = true;
-  // target_waypoints_time_ = msg->header.stamp;
   target_waypoints_time_ = ros::Time::now();
 }
 

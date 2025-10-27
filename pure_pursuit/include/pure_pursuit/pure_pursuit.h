@@ -67,7 +67,11 @@ public:
   // for debug on ROS
   geometry_msgs::Point getPoseOfNextWaypoint() const
   {
-    return current_waypoints_.at(next_waypoint_number_).pose.pose.position;
+    if (target_waypoint_index_ < 0 || target_waypoint_index_ >= static_cast<int>(current_waypoints_.size()))
+    {
+      return current_pose_.position;
+    }
+    return current_waypoints_.at(target_waypoint_index_).pose.pose.position;
   }
   geometry_msgs::Point getPoseOfNextTarget() const
   {
@@ -90,27 +94,33 @@ public:
     return minimum_lookahead_distance_;
   }
   // processing
-  bool canGetCurvature(double* output_kappa);
+  bool canGetCurvature(double& output_kappa, double& output_velocity);
+  double getCurrentCommandVelocity(autoware_msgs::Lane current_waypoint, int current_index,
+                                   geometry_msgs::Pose current_pose);
 
 private:
   // constant
   static constexpr double RADIUS_MAX_ = 9e10;
   static constexpr double RADIUS_MIN_ = 0.3;
+  static constexpr double RECOVERY_VEL_ = 0.2;
 
   // variables
   bool is_linear_interpolation_{ false };
-  int next_waypoint_number_{ -1 };
+  int target_waypoint_index_{ -1 };
+  int current_waypoint_index_{ -1 };
   double lookahead_distance_{ 0.0 };
   double minimum_lookahead_distance_{ 6.0 };
   double current_linear_velocity_{ 0.0 };
   geometry_msgs::Pose current_pose_{};
   geometry_msgs::Point next_target_position_{};
   std::vector<autoware_msgs::Waypoint> current_waypoints_{};
+  int recovery_rotate_direction_{ 0 };
 
   // functions
   double calcCurvature(const geometry_msgs::Point& target) const;
   bool interpolateNextTarget(int next_waypoint, geometry_msgs::Point* next_target) const;
-  void getNextWaypoint();
+  int getTargetIndex(const autoware_msgs::Lane& current_path, geometry_msgs::Pose current_pose, int current_index,
+                     double lookahead_distance);
 };
 }  // namespace waypoint_follower
 
