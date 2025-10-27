@@ -56,7 +56,7 @@ private:
   ros::Subscriber costmap_sub_;
   ros::Subscriber current_pose_sub_;
   ros::Subscriber current_velocity_sub_;
-  ros::Subscriber base_waypoints_sub_;
+  ros::Subscriber global_waypoints_sub_;
   ros::Subscriber closest_waypoint_sub_;
   ros::Subscriber obstacle_waypoint_sub_;
   ros::Subscriber state_sub_;
@@ -86,7 +86,7 @@ private:
 
   // Index of the closest waypoint in the current_waypoints_ Lane.
   // Not the same as the waypoint gid. This value can change suddenly if the
-  // current_waypoints_ switches between base_waypoints_ and avoid_merged_waypoints_.
+  // current_waypoints_ switches between global_waypoints_ and avoid_merged_waypoints_.
   State select_way_;
   int closest_global_index_ = -1;
   int avoid_current_merged_index_ = -1;
@@ -98,7 +98,7 @@ private:
   // Index of the obstacle relative to current_waypoint_index_.
   int obstacle_local_index_ = -1;
   nav_msgs::OccupancyGrid costmap_;
-  autoware_msgs::Lane base_waypoints_;
+  autoware_msgs::Lane global_waypoints_;
   autoware_msgs::Lane avoid_merged_waypoints_;
   geometry_msgs::PoseStamped current_pose_local_, current_pose_global_;
   geometry_msgs::PoseStamped goal_pose_local_, goal_pose_global_;
@@ -108,7 +108,7 @@ private:
   bool costmap_initialized_ = false;
   bool current_pose_initialized_ = false;
   bool current_velocity_initialized_ = false;
-  bool base_waypoints_initialized_ = false;
+  bool global_waypoints_initialized_ = false;
   bool closest_global_index_initialized_ = false;
 
   // functions, callback
