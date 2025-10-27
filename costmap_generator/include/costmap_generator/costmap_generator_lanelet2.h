@@ -86,6 +86,10 @@ private:
 
   double maximum_lidar_height_thres_;
   double minimum_lidar_height_thres_;
+  double robot_width_;
+  double robot_length_;
+  double robot_base2back_;
+  bool remove_inside_robot_;
 
   double expand_polygon_size_;
   double expand_point_distance_;
@@ -158,6 +162,7 @@ private:
 
   /// \brief calculate cost for final output
   grid_map::Matrix generateCombinedCostmap();
+  void clearInsideRobot(grid_map::Matrix& costmap_layer);
 };
 
 #endif  // COSTMAP_GENERATOR_H

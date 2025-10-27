@@ -65,7 +65,10 @@ void CostmapGeneratorLanelet2::init()
   private_nh_.param<double>("expand_polygon_size", expand_polygon_size_, 1.0);
   private_nh_.param<double>("expand_point_distance", expand_point_distance_, 0.2);
   private_nh_.param<int>("size_of_expansion_kernel", size_of_expansion_kernel_, 9);
-
+  private_nh_.param<double>("robot_width", robot_width_, 0.7);
+  private_nh_.param<double>("robot_length", robot_length_, 0.82);
+  private_nh_.param<double>("robot_base2back", robot_base2back_, 0.137);
+  private_nh_.param<bool>("remove_inside_robot", remove_inside_robot_, true);
   initGridmap();
 }
 
@@ -219,6 +222,11 @@ grid_map::Matrix CostmapGeneratorLanelet2::generateCombinedCostmap()
       combined_costmap[COMBINED_COSTMAP_LAYER_].cwiseMax(combined_costmap[OBJECTS_BOX_COSTMAP_LAYER_]);
   combined_costmap[COMBINED_COSTMAP_LAYER_] =
       combined_costmap[COMBINED_COSTMAP_LAYER_].cwiseMax(combined_costmap[OBJECTS_CONVEX_HULL_COSTMAP_LAYER_]);
+  // Clear the robot's internal area if the remove_inside_robot_ parameter is true
+  if (remove_inside_robot_)
+  {
+    clearInsideRobot(combined_costmap[COMBINED_COSTMAP_LAYER_]);
+  }
   return combined_costmap[COMBINED_COSTMAP_LAYER_];
 }
 
@@ -234,4 +242,54 @@ void CostmapGeneratorLanelet2::publishRosMsg(const grid_map::GridMap& costmap, c
   grid_map::GridMapRosConverter::toMessage(costmap, out_gridmap_msg);
   out_gridmap_msg.info.header = in_header;
   pub_costmap_.publish(out_gridmap_msg);
+}
+
+void CostmapGeneratorLanelet2::clearInsideRobot(grid_map::Matrix& costmap_layer)
+{
+  const double epsilon = 1e-6;
+
+  const double half_w = robot_width_ / 2.0;
+  const double front = robot_length_ - robot_base2back_;
+  const double back = robot_base2back_;
+  const double res = costmap_.getResolution();
+
+  // Robot footprint boundaries in robot coordinates
+  const double x_min = -back;
+  const double x_max = front;
+  const double y_min = -half_w;
+  const double y_max = half_w;
+
+  for (grid_map::GridMapIterator it(costmap_); !it.isPastEnd(); ++it)
+  {
+    const grid_map::Index index(*it);
+    grid_map::Position cell_center;
+    costmap_.getPosition(index, cell_center);
+
+    // Compute cell boundaries (center ± 0.5 * resolution)
+    const double cx_min = cell_center.x() - 0.5 * res;
+    const double cx_max = cell_center.x() + 0.5 * res;
+    const double cy_min = cell_center.y() - 0.5 * res;
+    const double cy_max = cell_center.y() + 0.5 * res;
+
+    // Check if the footprint rectangle overlaps with this cell
+    const bool overlap = (cx_max > x_min) && (cx_min < x_max) && (cy_max > y_min) && (cy_min < y_max);
+
+    if (!overlap)
+      continue;
+
+    // Compute the minimum distance between the footprint edge and the cell boundary
+    const double dist_x_min = std::abs(cx_min - x_max);  // front edge vs cell left
+    const double dist_x_max = std::abs(cx_max - x_min);  // back edge vs cell right
+    const double dist_y_min = std::abs(cy_min - y_max);  // right edge vs cell bottom
+    const double dist_y_max = std::abs(cy_max - y_min);  // left edge vs cell top
+
+    const double min_dist = std::min({ dist_x_min, dist_x_max, dist_y_min, dist_y_max });
+
+    // Skip clearing if the footprint edge is nearly aligned with the cell boundary
+    if (min_dist < epsilon)
+      continue;
+
+    // Clear cells that are clearly inside the robot footprint
+    costmap_layer(index(0), index(1)) = grid_min_value_;
+  }
 }
