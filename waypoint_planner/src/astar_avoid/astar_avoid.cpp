@@ -40,6 +40,16 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   rate_ = new ros::Rate(update_rate_);
 }
 
+AstarAvoid::~AstarAvoid()
+{
+  // Join the worker thread if it was started
+  if (astar_transition_thread_.joinable())
+    astar_transition_thread_.join();
+  // Cleanup the rate object
+  delete rate_;
+  rate_ = nullptr;
+}
+
 void AstarAvoid::costmapCallback(const nav_msgs::OccupancyGrid& msg)
 {
   costmap_ = msg;
@@ -121,10 +131,19 @@ void AstarAvoid::run()
 
   // Kick off a timer to publish final waypoints
   timer_ = nh_.createTimer(ros::Duration(1.0 / update_rate_), &AstarAvoid::publishWaypoints, this);
+  astar_transition_thread_ = std::thread(&AstarAvoid::astarAvoidTransitionThread, this);
 
   while (ros::ok())
   {
     ros::spinOnce();
+    rate_->sleep();
+  }
+}
+
+void AstarAvoid::astarAvoidTransitionThread()
+{
+  while (ros::ok())
+  {
     runAstarAvoidTransition();
     rate_->sleep();
   }

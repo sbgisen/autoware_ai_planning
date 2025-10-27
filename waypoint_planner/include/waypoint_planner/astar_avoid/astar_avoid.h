@@ -51,8 +51,9 @@ public:
   };
 
   AstarAvoid();
-  ~AstarAvoid() = default;
+  ~AstarAvoid();
   void run();
+  void astarAvoidTransitionThread();
   void runAstarAvoidTransition();
 
 private:
@@ -68,6 +69,7 @@ private:
   ros::Subscriber state_sub_;
   ros::Rate* rate_;
   ros::Timer timer_;
+  std::thread astar_transition_thread_;
   tf::TransformListener tf_listener_;
 
   // params
