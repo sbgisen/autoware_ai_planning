@@ -39,9 +39,9 @@ double PurePursuit::calcCurvature(const geometry_msgs::Point& target) const
   }
   else
   {
-    kappa = numerator > 0.0 ? KAPPA_MIN_ : -KAPPA_MIN_;
+    kappa = numerator > 0.0 ? (1.0 / RADIUS_MAX_) : -(1.0 / RADIUS_MAX_);
   }
-
+  kappa = std::max(std::min(kappa, 1.0 / RADIUS_MIN_), -1.0 / RADIUS_MIN_);
   return kappa;
 }
 

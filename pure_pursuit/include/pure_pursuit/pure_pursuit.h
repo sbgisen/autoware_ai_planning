@@ -95,7 +95,7 @@ public:
 private:
   // constant
   static constexpr double RADIUS_MAX_ = 9e10;
-  static constexpr double KAPPA_MIN_ = 1.0 / 9e10;
+  static constexpr double RADIUS_MIN_ = 0.3;
 
   // variables
   bool is_linear_interpolation_{ false };
