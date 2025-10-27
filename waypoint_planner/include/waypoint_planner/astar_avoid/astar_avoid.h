@@ -86,20 +86,20 @@ private:
 
   // Index of the closest waypoint in the current_waypoints_ Lane.
   // Not the same as the waypoint gid. This value can change suddenly if the
-  // current_waypoints_ switches between base_waypoints_ and avoid_waypoints_.
+  // current_waypoints_ switches between base_waypoints_ and avoid_merged_waypoints_.
   State select_way_;
-  int closest_waypoint_index_ = -1;
-  int avoid_waypoint_index_ = -1;
-  int avoid_start_index_ = -1;
-  int avoid_finish_index_ = -1;
-  int base_waypoint_index_ = -1;
-  int base_finish_index_ = -1;
+  int closest_global_index_ = -1;
+  int avoid_current_merged_index_ = -1;
+  int avoid_start_global_index_ = -1;
+  int avoid_goal_merged_index_ = -1;
+  int current_global_index_ = -1;
+  int avoid_goal_global_index_ = -1;
 
   // Index of the obstacle relative to current_waypoint_index_.
-  int obstacle_waypoint_index_ = -1;
+  int obstacle_local_index_ = -1;
   nav_msgs::OccupancyGrid costmap_;
   autoware_msgs::Lane base_waypoints_;
-  autoware_msgs::Lane avoid_waypoints_;
+  autoware_msgs::Lane avoid_merged_waypoints_;
   geometry_msgs::PoseStamped current_pose_local_, current_pose_global_;
   geometry_msgs::PoseStamped goal_pose_local_, goal_pose_global_;
   geometry_msgs::TwistStamped current_velocity_;
@@ -109,7 +109,7 @@ private:
   bool current_pose_initialized_ = false;
   bool current_velocity_initialized_ = false;
   bool base_waypoints_initialized_ = false;
-  bool closest_waypoint_initialized_ = false;
+  bool closest_global_index_initialized_ = false;
 
   // functions, callback
   void costmapCallback(const nav_msgs::OccupancyGrid& msg);
