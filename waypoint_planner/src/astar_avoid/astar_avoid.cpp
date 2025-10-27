@@ -109,7 +109,7 @@ void AstarAvoid::run()
   }
 
   // main loop
-  ros::WallTime start_avoid_time = ros::WallTime::now();
+  start_avoid_time_ = ros::WallTime::now();
 
   // reset obstacle index
   obstacle_local_index_ = -1;
@@ -125,59 +125,63 @@ void AstarAvoid::run()
   while (ros::ok())
   {
     ros::spinOnce();
-
-    // relay mode
-    if (!enable_avoidance_)
-    {
-      rate_->sleep();
-      continue;
-    }
-
-    // avoidance mode
-    bool found_obstacle = (obstacle_local_index_ >= 0);
-    bool request_aster_planning = found_obstacle && (obstacle_local_index_ <= search_waypoints_size_);
-
-    // update state
-    if ((ros::WallTime::now() - start_avoid_time).toSec() < replan_interval_)
-    {
-      obstacle_local_index_ = -1;
-      is_move_ = !request_aster_planning;
-    }
-    else if (request_aster_planning)
-    {
-      ROS_INFO("Start Plan: Request A* planning");
-      if (planAvoidWaypoints())
-      {
-        ROS_INFO("Plan -> Avoid, Found path");
-        astar_plan_status_ = AstarAvoid::AsterPlanStatus::SUCCESS;
-        select_way_ = AstarAvoid::WayType::AVOID;
-        is_move_ = true;
-        obstacle_local_index_ = -1;
-        avoid_current_merged_index_ =
-            updateCurrentIndex(avoid_merged_waypoints_, current_pose_global_.pose, avoid_current_merged_index_);
-      }
-      else
-      {
-        ROS_INFO("Plan -> Relay, Cannot find path");
-        astar_plan_status_ = AstarAvoid::AsterPlanStatus::FAILURE;
-        select_way_ = AstarAvoid::WayType::RELAY;
-        is_move_ = false;
-        avoid_current_merged_index_ = -1;
-      }
-      start_avoid_time = ros::WallTime::now();
-    }
-    // Check if goal reached
-    if (select_way_ == AstarAvoid::WayType::AVOID && is_move_)
-    {
-      if (avoid_current_merged_index_ >= avoid_goal_merged_index_)
-      {
-        ROS_INFO("Avoid -> Relay, Reached goal");
-        select_way_ = AstarAvoid::WayType::RELAY;
-        is_move_ = true;
-        avoid_current_merged_index_ = -1;
-      }
-    }
+    runAstarAvoidTransition();
     rate_->sleep();
+  }
+}
+
+void AstarAvoid::runAstarAvoidTransition()
+{
+  // relay mode
+  if (!enable_avoidance_)
+  {
+    rate_->sleep();
+    return;
+  }
+
+  // avoidance mode
+  bool found_obstacle = (obstacle_local_index_ >= 0);
+  bool request_aster_planning = found_obstacle && (obstacle_local_index_ <= search_waypoints_size_);
+
+  // update state
+  if ((ros::WallTime::now() - start_avoid_time_).toSec() < replan_interval_)
+  {
+    obstacle_local_index_ = -1;
+    is_move_ = !request_aster_planning;
+  }
+  else if (request_aster_planning)
+  {
+    ROS_INFO("Start Plan: Request A* planning");
+    if (planAvoidWaypoints())
+    {
+      ROS_INFO("Plan -> Avoid, Found path");
+      astar_plan_status_ = AstarAvoid::AsterPlanStatus::SUCCESS;
+      select_way_ = AstarAvoid::WayType::AVOID;
+      is_move_ = true;
+      obstacle_local_index_ = -1;
+      avoid_current_merged_index_ =
+          updateCurrentIndex(avoid_merged_waypoints_, current_pose_global_.pose, avoid_current_merged_index_);
+    }
+    else
+    {
+      ROS_INFO("Plan -> Relay, Cannot find path");
+      astar_plan_status_ = AstarAvoid::AsterPlanStatus::FAILURE;
+      select_way_ = AstarAvoid::WayType::RELAY;
+      is_move_ = false;
+      avoid_current_merged_index_ = -1;
+    }
+    start_avoid_time_ = ros::WallTime::now();
+  }
+  // Check if goal reached
+  if (select_way_ == AstarAvoid::WayType::AVOID && is_move_)
+  {
+    if (avoid_current_merged_index_ >= avoid_goal_merged_index_)
+    {
+      ROS_INFO("Avoid -> Relay, Reached goal");
+      select_way_ = AstarAvoid::WayType::RELAY;
+      is_move_ = true;
+      avoid_current_merged_index_ = -1;
+    }
   }
 }
 

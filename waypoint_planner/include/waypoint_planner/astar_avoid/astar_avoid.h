@@ -53,6 +53,7 @@ public:
   AstarAvoid();
   ~AstarAvoid() = default;
   void run();
+  void runAstarAvoidTransition();
 
 private:
   // ros
@@ -99,6 +100,7 @@ private:
   int avoid_goal_merged_index_ = -1;
   int current_global_index_ = -1;
   int avoid_goal_global_index_ = -1;
+  ros::WallTime start_avoid_time_;
 
   // Index of the obstacle relative to current_waypoint_index_.
   int obstacle_local_index_ = -1;
