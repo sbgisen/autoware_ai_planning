@@ -35,8 +35,8 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   current_pose_sub_ = nh_.subscribe("current_pose", 1, &AstarAvoid::currentPoseCallback, this);
   current_velocity_sub_ = nh_.subscribe("current_velocity", 1, &AstarAvoid::currentVelocityCallback, this);
   base_waypoints_sub_ = nh_.subscribe("base_waypoints", 1, &AstarAvoid::baseWaypointsCallback, this);
-  closest_waypoint_sub_ = nh_.subscribe("closest_waypoint", 1, &AstarAvoid::closestWaypointCallback, this);
-  obstacle_waypoint_sub_ = nh_.subscribe("obstacle_waypoint", 1, &AstarAvoid::obstacleWaypointCallback, this);
+  closest_waypoint_sub_ = nh_.subscribe("closest_waypoint", 1, &AstarAvoid::closestIndexCallback, this);
+  obstacle_waypoint_sub_ = nh_.subscribe("obstacle_waypoint", 1, &AstarAvoid::obstacleIndexCallback, this);
 
   rate_ = new ros::Rate(update_rate_);
 }
@@ -78,13 +78,13 @@ void AstarAvoid::baseWaypointsCallback(const autoware_msgs::Lane& msg)
   base_waypoints_initialized_ = true;
 }
 
-void AstarAvoid::closestWaypointCallback(const std_msgs::Int32& msg)
+void AstarAvoid::closestIndexCallback(const std_msgs::Int32& msg)
 {
   closest_waypoint_index_ = msg.data;
   closest_waypoint_initialized_ = true;
 }
 
-void AstarAvoid::obstacleWaypointCallback(const std_msgs::Int32& msg)
+void AstarAvoid::obstacleIndexCallback(const std_msgs::Int32& msg)
 {
   obstacle_waypoint_index_ = msg.data;
 }

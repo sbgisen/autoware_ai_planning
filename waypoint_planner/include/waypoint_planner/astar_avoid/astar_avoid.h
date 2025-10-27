@@ -116,8 +116,8 @@ private:
   void currentPoseCallback(const geometry_msgs::PoseStamped& msg);
   void currentVelocityCallback(const geometry_msgs::TwistStamped& msg);
   void baseWaypointsCallback(const autoware_msgs::Lane& msg);
-  void closestWaypointCallback(const std_msgs::Int32& msg);
-  void obstacleWaypointCallback(const std_msgs::Int32& msg);
+  void closestIndexCallback(const std_msgs::Int32& msg);
+  void obstacleIndexCallback(const std_msgs::Int32& msg);
 
   // functions
   bool checkInitialized();
