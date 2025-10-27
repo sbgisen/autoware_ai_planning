@@ -63,6 +63,13 @@ void AstarAvoid::currentPoseCallback(const geometry_msgs::PoseStamped& msg)
     current_pose_local_.header.stamp = current_pose_global_.header.stamp;
     current_pose_initialized_ = true;
   }
+
+  // Update waypoint following index
+  if (select_way_ == AstarAvoid::WayType::AVOID && !avoid_merged_waypoints_.waypoints.empty())
+    avoid_current_merged_index_ =
+        updateCurrentIndex(avoid_merged_waypoints_, current_pose_global_.pose, avoid_current_merged_index_);
+  if (global_waypoints_initialized_ && !global_waypoints_.waypoints.empty())
+    current_global_index_ = updateCurrentIndex(global_waypoints_, current_pose_global_.pose, current_global_index_);
 }
 
 void AstarAvoid::currentVelocityCallback(const geometry_msgs::TwistStamped& msg)
@@ -131,79 +138,43 @@ void AstarAvoid::run()
     bool request_aster_planning = found_obstacle && (obstacle_local_index_ <= search_waypoints_size_);
 
     // update state
-    if (state_ == AstarAvoid::STATE::RELAYING)
+    if ((ros::WallTime::now() - start_avoid_time).toSec() < replan_interval_)
     {
-      select_way_ = AstarAvoid::STATE::RELAYING;
-      if (found_obstacle)
-      {
-        ROS_INFO("RELAYING -> STOPPING, Decelerate for stopping");
-        state_ = AstarAvoid::STATE::STOPPING;
-      }
+      obstacle_local_index_ = -1;
+      is_move_ = !request_aster_planning;
     }
-    else if (state_ == AstarAvoid::STATE::STOPPING)
+    else if (request_aster_planning)
     {
-      bool replan = ((ros::WallTime::now() - start_plan_time).toSec() > replan_interval_);
-
-      if (!found_obstacle)
-      {
-        if (select_way_ == AstarAvoid::STATE::AVOIDING)
-        {
-          ROS_INFO("STOPPING -> AVOIDING, Obstacle disappers");
-          state_ = AstarAvoid::STATE::AVOIDING;
-        }
-        else
-        {
-          ROS_INFO("STOPPING -> RELAYING, Obstacle disappers");
-          state_ = AstarAvoid::STATE::RELAYING;
-        }
-      }
-      else if (replan && start_plan)
-      {
-        ROS_INFO("STOPPING -> PLANNING, Start A* planning");
-        state_ = AstarAvoid::STATE::PLANNING;
-      }
-    }
-    else if (state_ == AstarAvoid::STATE::PLANNING)
-    {
-      start_plan_time = ros::WallTime::now();
-      if (select_way_ == AstarAvoid::STATE::AVOIDING)
-      {
-        ROS_INFO("Found obstacle while AVOIDING -> replanning");
-      }
+      ROS_INFO("Start Plan: Request A* planning");
       if (planAvoidWaypoints())
       {
-        ROS_INFO("PLANNING -> AVOIDING, Found path");
-        state_ = AstarAvoid::STATE::AVOIDING;
-        start_avoid_time = ros::WallTime::now();
+        ROS_INFO("Plan -> Avoid, Found path");
+        astar_plan_status_ = AstarAvoid::AsterPlanStatus::SUCCESS;
+        select_way_ = AstarAvoid::WayType::AVOID;
+        is_move_ = true;
+        obstacle_local_index_ = -1;
+        avoid_current_merged_index_ =
+            updateCurrentIndex(avoid_merged_waypoints_, current_pose_global_.pose, avoid_current_merged_index_);
       }
       else
       {
-        ROS_INFO("PLANNING -> STOPPING, Cannot find path");
-        state_ = AstarAvoid::STATE::STOPPING;
+        ROS_INFO("Plan -> Relay, Cannot find path");
+        astar_plan_status_ = AstarAvoid::AsterPlanStatus::FAILURE;
+        select_way_ = AstarAvoid::WayType::RELAY;
+        is_move_ = false;
+        avoid_current_merged_index_ = -1;
       }
+      start_avoid_time = ros::WallTime::now();
     }
-    else if (state_ == AstarAvoid::STATE::AVOIDING)
+    // Check if goal reached
+    if (select_way_ == AstarAvoid::WayType::AVOID && is_move_)
     {
-      // Check if goal reached
       if (avoid_current_merged_index_ >= avoid_goal_merged_index_)
       {
-        ROS_INFO("AVOIDING -> RELAYING, Reached goal");
-        current_global_index_ = avoid_goal_global_index_;
-        state_ = AstarAvoid::STATE::RELAYING;
-        select_way_ = AstarAvoid::STATE::RELAYING;
-      }
-      else
-      {
-        select_way_ = AstarAvoid::STATE::AVOIDING;
-        if (start_plan)
-        {
-          bool replan = ((ros::WallTime::now() - start_avoid_time).toSec() > replan_interval_);
-          if (replan)
-          {
-            ROS_INFO("AVOIDING -> STOPPING, Abort avoiding");
-            state_ = AstarAvoid::STATE::STOPPING;
-          }
-        }
+        ROS_INFO("Avoid -> Relay, Reached goal");
+        select_way_ = AstarAvoid::WayType::RELAY;
+        is_move_ = true;
+        avoid_current_merged_index_ = -1;
       }
     }
     rate_->sleep();
@@ -374,23 +345,22 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
 void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
 {
   // select waypoints
-  autoware_msgs::Lane current_waypoints_;
-  int current_index, next_index;
-  if (select_way_ == AstarAvoid::STATE::AVOIDING)
+  autoware_msgs::Lane current_waypoints;
+  int current_index;
+
+  // Update avoiding index
+  if (select_way_ == AstarAvoid::WayType::AVOID)
   {
-    current_waypoints_ = avoid_merged_waypoints_;
+    current_waypoints = avoid_merged_waypoints_;
     current_index = avoid_current_merged_index_;
   }
   else
   {
-    current_waypoints_ = global_waypoints_;
+    current_waypoints = global_waypoints_;
     current_index = current_global_index_;
   }
 
-  // Update the current point in the selected lane.
-  next_index = updateCurrentIndex(current_waypoints_, current_pose_global_.pose, current_index);
-
-  if (next_index == -1)
+  if (current_index == -1)
   {
     avoid_current_merged_index_ = -1;
     current_global_index_ = -1;
@@ -399,41 +369,18 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
 
   // Create local path starting at closest global waypoint
   autoware_msgs::Lane safety_waypoints;
-  safety_waypoints.header = current_waypoints_.header;
-  safety_waypoints.increment = current_waypoints_.increment;
+  safety_waypoints.header = current_waypoints.header;
+  safety_waypoints.increment = current_waypoints.increment;
 
-  for (int i = next_index;
-       i < next_index + safety_waypoints_size_ && i < static_cast<int>(current_waypoints_.waypoints.size()); ++i)
+  for (int i = current_index;
+       i < current_index + safety_waypoints_size_ && i < static_cast<int>(current_waypoints.waypoints.size()); ++i)
   {
-    safety_waypoints.waypoints.push_back(current_waypoints_.waypoints[i]);
+    safety_waypoints.waypoints.push_back(current_waypoints.waypoints[i]);
   }
 
   if (!safety_waypoints.waypoints.empty())
   {
     safety_waypoints_pub_.publish(safety_waypoints);
-  }
-
-  // Update index
-  if (select_way_ == AstarAvoid::STATE::AVOIDING)
-  {
-    avoid_current_merged_index_ = next_index;
-    // Update current_global_index_ to match the amount of progress made by avoid_current_merged_index_.
-    if (avoid_goal_merged_index_ != avoid_start_global_index_)
-    {
-      current_global_index_ =
-          avoid_start_global_index_ + (int)((avoid_current_merged_index_ - avoid_start_global_index_) *
-                                            (avoid_goal_global_index_ - avoid_start_global_index_) /
-                                            (avoid_goal_merged_index_ - avoid_start_global_index_));
-    }
-    else
-    {
-      current_global_index_ = avoid_current_merged_index_;
-    }
-  }
-  else
-  {
-    avoid_current_merged_index_ = next_index;
-    current_global_index_ = next_index;
   }
 }
 
