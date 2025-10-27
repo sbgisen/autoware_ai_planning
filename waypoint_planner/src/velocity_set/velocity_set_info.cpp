@@ -47,6 +47,7 @@ VelocitySetInfo::VelocitySetInfo()
   private_nh_.param<double>("velocity_change_limit", vel_change_limit_kph, 9.972);
   private_nh_.param<double>("deceleration_range", deceleration_range_, 0);
   private_nh_.param<double>("temporal_waypoints_size", temporal_waypoints_size_, 100.0);
+  private_nh_.param<double>("max_search_range", max_search_range_, 10.0);
   private_nh_.param<double>("robot_length", robot_length_, 0.82);
   private_nh_.param<double>("robot_width", robot_width_, 0.7);
   private_nh_.param<double>("robot_base2back", robot_base2back_, 0.137);

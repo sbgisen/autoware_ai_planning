@@ -47,6 +47,7 @@ private:
 
   // ROS param
   double remove_points_upto_;
+  double max_search_range_;
 
   // vehicle info
   double robot_length_;
@@ -152,6 +153,11 @@ public:
   bool getSetPose() const
   {
     return set_pose_;
+  }
+
+  double getMaxSearchRange() const
+  {
+    return max_search_range_;
   }
 
   double getRobotLength() const
