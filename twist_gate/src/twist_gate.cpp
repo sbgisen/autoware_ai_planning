@@ -26,7 +26,7 @@
  *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ */
 
 #include "twist_gate/twist_gate.h"
 #include <ros_observer/lib_ros_observer.h>
@@ -106,7 +106,7 @@ void TwistGate::checkState()
   const double state_msg_timeout = 0.5;
   double state_time_diff = ros::Time::now().toSec() - state_time_.toSec();
 
-  if (use_decision_maker_ && (!is_state_drive_ || state_time_diff >= state_msg_timeout) )
+  if (use_decision_maker_ && (!is_state_drive_ || state_time_diff >= state_msg_timeout))
   {
     twist_gate_msg_.twist_cmd.twist = geometry_msgs::Twist();
     twist_gate_msg_.ctrl_cmd = autoware_msgs::ControlCommand();
@@ -147,14 +147,16 @@ void TwistGate::watchdogTimer()
     if (command_mode_ == CommandMode::REMOTE)
     {
       const double dt = (now_time - remote_cmd_time_).toSec() * 1000;
-      health_checker_ptr_->CHECK_MAX_VALUE("remote_cmd_interval", dt, 700, 1000, 1500, "remote cmd interval is too "
-                                                                                       "long.");
+      health_checker_ptr_->CHECK_MAX_VALUE("remote_cmd_interval", dt, 700, 1000, 1500,
+                                           "remote cmd interval is too "
+                                           "long.");
     }
 
     // check push emergency stop button
     const int level = (emergency_stop_msg_.data) ? AwDiagStatus::ERROR : AwDiagStatus::OK;
-    health_checker_ptr_->CHECK_TRUE("emergency_stop_button", emergency_stop_msg_.data, level, "emergency stop button "
-                                                                                              "is pushed.");
+    health_checker_ptr_->CHECK_TRUE("emergency_stop_button", emergency_stop_msg_.data, level,
+                                    "emergency stop button "
+                                    "is pushed.");
 
     // if no emergency message received for more than timeout_period_
     if ((now_time - emergency_handling_time_) > timeout_period_)
@@ -193,8 +195,8 @@ void TwistGate::remoteCmdCallback(const remote_msgs_t::ConstPtr& input_msg)
 void TwistGate::autoCmdTwistCmdCallback(const geometry_msgs::TwistStamped::ConstPtr& input_msg)
 {
   health_checker_ptr_->CHECK_RATE("topic_rate_twist_cmd_slow", 8, 5, 1, "topic twist_cmd subscribe rate slow.");
-  health_checker_ptr_->CHECK_MAX_VALUE("twist_cmd_linear_high", input_msg->twist.linear.x,
-    DBL_MAX, DBL_MAX, DBL_MAX, "linear twist_cmd is too high");
+  health_checker_ptr_->CHECK_MAX_VALUE("twist_cmd_linear_high", input_msg->twist.linear.x, DBL_MAX, DBL_MAX, DBL_MAX,
+                                       "linear twist_cmd is too high");
 
   if (command_mode_ == CommandMode::AUTO && !emergency_handling_active_)
   {

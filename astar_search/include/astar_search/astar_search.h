@@ -72,10 +72,10 @@ private:
   double time_limit_;             // planning time limit [msec]
 
   // robot configs (TODO: obtain from vehicle_info)
-  double robot_length_;           // X [m]
-  double robot_width_;            // Y [m]
-  double robot_base2back_;        // base_link to rear [m]
-  double minimum_turning_radius_; // [m]]
+  double robot_length_;            // X [m]
+  double robot_width_;             // Y [m]
+  double robot_base2back_;         // base_link to rear [m]
+  double minimum_turning_radius_;  // [m]]
 
   // search configs
   int theta_size_;                  // descritized angle table size [-]

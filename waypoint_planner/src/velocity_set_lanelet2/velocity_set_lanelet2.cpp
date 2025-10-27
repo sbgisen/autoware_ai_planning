@@ -168,9 +168,8 @@ int findClosestCrosswalk(const lanelet::ConstLanelets& crosswalks, const int clo
 // return EControl::STOP when there are lidar points in crosswalk
 // return EControl::Keep otherwise
 EControl crossWalkDetection(const pcl::PointCloud<pcl::PointXYZ>& points,
-                            const lanelet::ConstLanelets& closest_crosswalks,
-                            const geometry_msgs::Pose localizer_pose, const int points_threshold,
-                            ObstaclePoints* obstacle_points)
+                            const lanelet::ConstLanelets& closest_crosswalks, const geometry_msgs::Pose localizer_pose,
+                            const int points_threshold, ObstaclePoints* obstacle_points)
 {
   for (auto lli = closest_crosswalks.begin(); lli != closest_crosswalks.end(); lli++)
   {
@@ -350,7 +349,8 @@ int detectDecelerateObstacle(const pcl::PointCloud<pcl::PointXYZ>& points, const
 EControl pointsDetection(const pcl::PointCloud<pcl::PointXYZ>& points, const int closest_waypoint,
                          const int detection_waypoint, const autoware_msgs::Lane& lane,
                          const lanelet::ConstLanelets& closest_crosswalks, const VelocitySetInfo& vs_info,
-                         int* obstacle_waypoint, ObstaclePoints* obstacle_points, const int deceleration_search_distance, const int stop_search_distance)
+                         int* obstacle_waypoint, ObstaclePoints* obstacle_points,
+                         const int deceleration_search_distance, const int stop_search_distance)
 {
   // no input for detection || no closest waypoint
   if ((points.empty() == true && vs_info.getDetectionResultByOtherNodes() == -1) || closest_waypoint < 0)
@@ -376,8 +376,8 @@ EControl pointsDetection(const pcl::PointCloud<pcl::PointXYZ>& points, const int
       return EControl::OTHERS;
   }
 
-  int decelerate_obstacle_waypoint =
-      detectDecelerateObstacle(points, closest_waypoint, lane, vs_info.getStopRange(), vs_info.getDecelerationRange(),
+  int decelerate_obstacle_waypoint = detectDecelerateObstacle(
+      points, closest_waypoint, lane, vs_info.getStopRange(), vs_info.getDecelerationRange(),
       vs_info.getPointsThreshold(), vs_info.getLocalizerPose(), obstacle_points, deceleration_search_distance);
 
   // stop obstacle was not found
@@ -533,7 +533,8 @@ void displayDetectionRange(const autoware_msgs::Lane& lane, const lanelet::Const
 EControl obstacleDetection(int closest_waypoint, int detection_waypoint, const autoware_msgs::Lane& lane,
                            const lanelet::ConstLanelets& closest_crosswalks, const VelocitySetInfo vs_info,
                            const ros::Publisher& detection_range_pub, const ros::Publisher& obstacle_pub,
-                           int* obstacle_waypoint, const int deceleration_search_distance, const int stop_search_distance)
+                           int* obstacle_waypoint, const int deceleration_search_distance,
+                           const int stop_search_distance)
 {
   ObstaclePoints obstacle_points;
 
@@ -673,7 +674,7 @@ int main(int argc, char** argv)
   tf2_ros::Buffer tfBuffer;
   tf2_ros::TransformListener tfListener(tfBuffer);
 
-    // publisher
+  // publisher
   ros::Publisher detection_range_pub = rosnode.advertise<visualization_msgs::MarkerArray>("detection_range", 1);
   ros::Publisher obstacle_pub = rosnode.advertise<visualization_msgs::Marker>("obstacle", 1);
   ros::Publisher obstacle_waypoint_pub = rosnode.advertise<std_msgs::Int32>("obstacle_waypoint", 1, true);
@@ -689,14 +690,14 @@ int main(int argc, char** argv)
 
     try
     {
-        geometry_msgs::TransformStamped map_to_lidar_tf = tfBuffer.lookupTransform(
-          "map", "velodyne", ros::Time::now(), ros::Duration(2.0));
-        vs_info.setLocalizerPose(map_to_lidar_tf);
+      geometry_msgs::TransformStamped map_to_lidar_tf =
+          tfBuffer.lookupTransform("map", "velodyne", ros::Time::now(), ros::Duration(2.0));
+      vs_info.setLocalizerPose(map_to_lidar_tf);
     }
-    catch(tf2::TransformException &ex)
+    catch (tf2::TransformException& ex)
     {
-        ROS_WARN("Failed to get map->lidar transform. skip computation: %s", ex.what());
-        continue;
+      ROS_WARN("Failed to get map->lidar transform. skip computation: %s", ex.what());
+      continue;
     }
 
     int closest_waypoint = 0;
@@ -721,9 +722,9 @@ int main(int argc, char** argv)
     }
 
     int obstacle_waypoint = -1;
-    EControl detection_result =
-        obstacleDetection(closest_waypoint, detection_waypoint, vs_path.getPrevWaypoints(), closest_crosswalks, vs_info,
-                          detection_range_pub, obstacle_pub, &obstacle_waypoint, deceleration_search_distance, stop_search_distance);
+    EControl detection_result = obstacleDetection(
+        closest_waypoint, detection_waypoint, vs_path.getPrevWaypoints(), closest_crosswalks, vs_info,
+        detection_range_pub, obstacle_pub, &obstacle_waypoint, deceleration_search_distance, stop_search_distance);
 
     changeWaypoints(vs_info, detection_result, closest_waypoint, obstacle_waypoint, final_waypoints_pub, &vs_path);
 

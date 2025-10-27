@@ -41,7 +41,6 @@
 // headers in Autowae Health Checker
 #include <autoware_health_checker/health_checker/health_checker.h>
 
-
 class TwistGate
 {
   using remote_msgs_t = autoware_msgs::RemoteCmd;
@@ -73,7 +72,10 @@ private:
   void resetVehicleCmdMsg();
 
   // spinOnce for test
-  void spinOnce() { ros::spinOnce(); }
+  void spinOnce()
+  {
+    ros::spinOnce();
+  }
 
   ros::NodeHandle nh_;
   ros::NodeHandle private_nh_;
@@ -99,10 +101,9 @@ private:
   {
     AUTO = 1,
     REMOTE = 2
-  }
-  command_mode_,
+  } command_mode_,
 
-  previous_command_mode_;
+      previous_command_mode_;
   std_msgs::String command_mode_topic_;
 
   bool is_state_drive_ = false;

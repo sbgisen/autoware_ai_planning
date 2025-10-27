@@ -316,4 +316,4 @@ size_t countColumns(const std::string& line)
   return ncol;
 }
 
-}  // waypoint_maker
+}  // namespace waypoint_maker

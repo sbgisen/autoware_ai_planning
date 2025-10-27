@@ -16,9 +16,7 @@
 
 #include "waypoint_planner/astar_avoid/astar_avoid.h"
 
-AstarAvoid::AstarAvoid()
-  : nh_()
-  , private_nh_("~")
+AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
 {
   private_nh_.param<int>("safety_waypoints_size", safety_waypoints_size_, 100);
   private_nh_.param<double>("update_rate", update_rate_, 10.0);

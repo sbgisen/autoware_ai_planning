@@ -147,10 +147,9 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     try
     {
       changeLane();
-      std::get<1>(lane_for_change_) =
-          getClosestWaypointNumber(std::get<0>(lane_for_change_), current_pose_.pose, current_velocity_.twist,
-                                   std::get<1>(lane_for_change_), distance_threshold_,
-                                   search_closest_waypoint_minimum_dt_);
+      std::get<1>(lane_for_change_) = getClosestWaypointNumber(
+          std::get<0>(lane_for_change_), current_pose_.pose, current_velocity_.twist, std::get<1>(lane_for_change_),
+          distance_threshold_, search_closest_waypoint_minimum_dt_);
       std::get<2>(lane_for_change_) = static_cast<ChangeFlag>(
           std::get<0>(lane_for_change_).waypoints.at(std::get<1>(lane_for_change_)).change_flag);
       publishLane(std::get<0>(lane_for_change_));
@@ -251,10 +250,9 @@ void LaneSelectNode::createLaneForChange()
     return;
 
   std::get<0>(lane_for_change_).header.stamp = nghbr_lane.header.stamp;
-  std::vector<autoware_msgs::Waypoint> hermite_wps =
-      generateHermiteCurveForROS(cur_lane.waypoints.at(num_lane_change).pose.pose,
-                                 nghbr_lane.waypoints.at(target_num).pose.pose,
-                                 cur_lane.waypoints.at(num_lane_change).twist.twist.linear.x, vlength_hermite_curve_);
+  std::vector<autoware_msgs::Waypoint> hermite_wps = generateHermiteCurveForROS(
+      cur_lane.waypoints.at(num_lane_change).pose.pose, nghbr_lane.waypoints.at(target_num).pose.pose,
+      cur_lane.waypoints.at(num_lane_change).twist.twist.linear.x, vlength_hermite_curve_);
 
   for (auto&& el : hermite_wps)
     el.change_flag = cur_lane.waypoints.at(num_lane_change).change_flag;
