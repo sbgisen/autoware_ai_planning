@@ -37,6 +37,7 @@ AstarSearch::AstarSearch()
   private_nh_.param<double>("angle_goal_range", angle_goal_range_, 6.0);
   private_nh_.param<double>("curve_weight", curve_weight_, 1.2);
   private_nh_.param<double>("reverse_weight", reverse_weight_, 2.00);
+  private_nh_.param<double>("switch_back_cost", switch_back_cost_, 10);
   private_nh_.param<double>("lateral_goal_range", lateral_goal_range_, 0.5);
   private_nh_.param<double>("longitudinal_goal_range", longitudinal_goal_range_, 2.0);
   private_nh_.param<bool>("enable_path_length_limit", enable_path_length_limit_, false);
@@ -382,8 +383,11 @@ bool AstarSearch::search()
       double move_angle = current_an->move_angle + fabs(state.rotation);
 
       // Increase reverse cost
-      if (state.back != current_an->back)
+      if (current_an->back)
         move_cost *= reverse_weight_;
+      if (state.back != current_an->back)
+        move_cost += switch_back_cost_;
+
       // Increase curve cost
       double curve_cost_scale = std::max(0.0, 1.0 + (fabs(state.rotation) * (curve_weight_ - 1.0)));
       move_cost *= curve_cost_scale;

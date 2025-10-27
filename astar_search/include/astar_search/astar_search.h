@@ -81,6 +81,7 @@ private:
   int theta_size_;                  // descritized angle table size [-]
   double curve_weight_;             // curve moving cost [-]
   double reverse_weight_;           // backward moving cost [-]
+  double switch_back_cost_;         // cost for switching between forward and backward [-]
   double lateral_goal_range_;       // reaching threshold, lateral error [m]
   double longitudinal_goal_range_;  // reaching threshold, longitudinal error [m]
   double angle_goal_range_;         // reaching threshold, angle error [deg]
