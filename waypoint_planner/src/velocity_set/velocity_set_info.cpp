@@ -28,7 +28,7 @@ VelocitySetInfo::VelocitySetInfo()
   , deceleration_stopline_(0.6)
   , velocity_change_limit_(2.77)
   , temporal_waypoints_size_(100)
-  , wpidx_detectionResultByOtherNodes_(-1)
+  , wpidx_detection_result_by_other_nodes_(-1)
   , set_pose_(false)
 {
   ros::NodeHandle private_nh_("~");
@@ -100,7 +100,7 @@ void VelocitySetInfo::pointsCallback(const sensor_msgs::PointCloud2ConstPtr& msg
 
 void VelocitySetInfo::detectionCallback(const std_msgs::Int32& msg)
 {
-  wpidx_detectionResultByOtherNodes_ = msg.data;
+  wpidx_detection_result_by_other_nodes_ = msg.data;
 }
 
 void VelocitySetInfo::controlPoseCallback(const geometry_msgs::PoseStampedConstPtr& msg)
