@@ -22,6 +22,7 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<double>("update_rate", update_rate_, 10.0);
 
   private_nh_.param<bool>("enable_avoidance", enable_avoidance_, false);
+  private_nh_.param<bool>("use_back", use_back_, true);
   private_nh_.param<double>("avoid_waypoints_velocity", avoid_waypoints_velocity_, 10.0);
   private_nh_.param<int>("plan_start_index", plan_start_index_, 100);
   private_nh_.param<double>("replan_interval", replan_interval_, 2.0);
@@ -348,14 +349,33 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
   }
 
   // set waypoints for avoiding
-  for (const auto& pose : path.poses)
+  if (use_back_)
   {
-    autoware_msgs::Waypoint wp;
-    wp.pose.header = global_waypoints_.header;
-    wp.pose.pose = transformPose(pose.pose, getTransform(global_waypoints_.header.frame_id, pose.header.frame_id));
-    wp.pose.pose.position.z = current_pose_global_.pose.position.z;  // height = const
-    wp.twist.twist.linear.x = avoid_waypoints_velocity_ / 3.6;       // velocity = const
-    avoid_merged_waypoints_.waypoints.push_back(wp);
+    int direction = 1;
+    for (const auto& pose : path.poses)
+    {
+      autoware_msgs::Waypoint wp;
+      wp.pose.header = global_waypoints_.header;
+      // if the next_pose.pose.position.z value is smaller than 0, it means that the path is backward
+      direction = (pose.pose.position.z < 0) ? -1 : 1;
+      wp.pose.pose.position.z = 0;
+      wp.pose.pose = transformPose(pose.pose, getTransform(global_waypoints_.header.frame_id, pose.header.frame_id));
+      wp.pose.pose.position.z = current_pose_global_.pose.position.z;         // height = const
+      wp.twist.twist.linear.x = direction * avoid_waypoints_velocity_ / 3.6;  // velocity = const
+      avoid_merged_waypoints_.waypoints.push_back(wp);
+    }
+  }
+  else
+  {
+    for (const auto& pose : path.poses)
+    {
+      autoware_msgs::Waypoint wp;
+      wp.pose.header = global_waypoints_.header;
+      wp.pose.pose = transformPose(pose.pose, getTransform(global_waypoints_.header.frame_id, pose.header.frame_id));
+      wp.pose.pose.position.z = current_pose_global_.pose.position.z;  // height = const
+      wp.twist.twist.linear.x = avoid_waypoints_velocity_ / 3.6;       // velocity = const
+      avoid_merged_waypoints_.waypoints.push_back(wp);
+    }
   }
 
   // add waypoints after goal index

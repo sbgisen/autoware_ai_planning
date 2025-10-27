@@ -77,6 +77,7 @@ private:
   double update_rate_;         // publishing rate [Hz]
 
   bool enable_avoidance_;            // enable avoidance mode
+  bool use_back_;                    // enable switchback action
   double avoid_waypoints_velocity_;  // constant velocity on planned waypoints [km/h]
   int plan_start_index_;             // start planning when obstacle is in front of this index [-]
   double replan_interval_;           // replan interval for avoidance planning [Hz]

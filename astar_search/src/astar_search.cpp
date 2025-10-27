@@ -503,6 +503,10 @@ void AstarSearch::setPath(const SimpleNode& goal)
     geometry_msgs::PoseStamped ros_pose;
     tf::poseTFToMsg(tf_pose, ros_pose.pose);
     ros_pose.header = header;
+    if (node->back)
+      ros_pose.pose.position.z = -1.0;
+    else
+      ros_pose.pose.position.z = 1.0;
     path_.poses.push_back(ros_pose);
 
     // To the next node
