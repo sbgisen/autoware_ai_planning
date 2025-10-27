@@ -32,7 +32,7 @@ Parameters can be set in both Launch file and Runtime manager:
 | `Enable Avoidance` | `enable_avoidance` | *Bool* | Enable avoidance mode | `false` |
 | `Costmap Topic` | `costmap_topic` | *String* | Costmap topic for Hybrid-A* search | `semantics/costmap_generator/occupancy_grid` |
 | `Waypoint Velocity` | `avoid_waypoints_velocity` | *Double* | Constant velocity on planned waypoints [km/h] | `10.0` |
-| `Avoidance Start Velocity` | `avoid_start_velocity` | *Double* | Self velocity for staring avoidance behavior [km/h] | `5.0` |
+| `Plan Start Index` | `plan_start_index` | *Int* | Start planning when obstacle is in front of this index [-] | `100` |
 | `Replan Interval` | `replan_interval` | *Double* | Replan interval for avoidance planning [Hz] | `2.0` |
 | - | `safety_waypoints_size` | *Int* | Output waypoint size [-] | `100` |
 | - | `update_rate` | *Double* | Publishing rate [Hz] | `10.0` |

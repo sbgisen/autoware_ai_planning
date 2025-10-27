@@ -23,7 +23,7 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
 
   private_nh_.param<bool>("enable_avoidance", enable_avoidance_, false);
   private_nh_.param<double>("avoid_waypoints_velocity", avoid_waypoints_velocity_, 10.0);
-  private_nh_.param<double>("avoid_start_velocity", avoid_start_velocity_, 5.0);
+  private_nh_.param<int>("plan_start_index", plan_start_index_, 100);
   private_nh_.param<double>("replan_interval", replan_interval_, 2.0);
   private_nh_.param<int>("search_waypoints_size", search_waypoints_size_, 50);
   private_nh_.param<int>("search_waypoints_delta", search_waypoints_delta_, 2);
@@ -128,7 +128,7 @@ void AstarAvoid::run()
 
     // avoidance mode
     bool found_obstacle = (obstacle_local_index_ >= 0);
-    bool avoid_velocity = (current_velocity_.twist.linear.x < avoid_start_velocity_ / 3.6);
+    bool start_plan = (obstacle_local_index_ <= plan_start_index_ && found_obstacle);
 
     // update state
     if (state_ == AstarAvoid::STATE::RELAYING)
@@ -157,7 +157,7 @@ void AstarAvoid::run()
           state_ = AstarAvoid::STATE::RELAYING;
         }
       }
-      else if (replan && avoid_velocity)
+      else if (replan && start_plan)
       {
         ROS_INFO("STOPPING -> PLANNING, Start A* planning");
         state_ = AstarAvoid::STATE::PLANNING;
@@ -195,7 +195,7 @@ void AstarAvoid::run()
       else
       {
         select_way_ = AstarAvoid::STATE::AVOIDING;
-        if (found_obstacle && avoid_velocity)
+        if (start_plan)
         {
           bool replan = ((ros::WallTime::now() - start_avoid_time).toSec() > replan_interval_);
           if (replan)
