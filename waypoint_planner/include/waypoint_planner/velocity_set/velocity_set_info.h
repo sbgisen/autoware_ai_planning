@@ -48,6 +48,12 @@ private:
   // ROS param
   double remove_points_upto_;
 
+  // vehicle info
+  double robot_length_;
+  double robot_width_;
+  double robot_base2back_;
+  bool use_robot_shape_;
+
   pcl::PointCloud<pcl::PointXYZ> points_;
   geometry_msgs::Pose localizer_pose_;       // pose of sensor
   geometry_msgs::PoseStamped control_pose_;  // pose of base_link
@@ -146,6 +152,26 @@ public:
   bool getSetPose() const
   {
     return set_pose_;
+  }
+
+  double getRobotLength() const
+  {
+    return robot_length_;
+  }
+
+  double getRobotWidth() const
+  {
+    return robot_width_;
+  }
+
+  double getRobotBase2Back() const
+  {
+    return robot_base2back_;
+  }
+
+  bool getUseRobotShape() const
+  {
+    return use_robot_shape_;
   }
 };
 
