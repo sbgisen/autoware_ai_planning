@@ -194,7 +194,7 @@ void AstarAvoid::runAstarAvoidTransition()
   // Check if goal reached
   if (select_way_ == AstarAvoid::WayType::AVOID && is_move_)
   {
-    if (avoid_current_merged_index_ >= avoid_goal_merged_index_)
+    if (avoid_current_merged_index_ >= avoid_goal_merged_index_ || current_global_index_ >= avoid_goal_global_index_)
     {
       ROS_INFO("Avoid -> Relay, Reached goal");
       select_way_ = AstarAvoid::WayType::RELAY;
