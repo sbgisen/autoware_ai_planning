@@ -839,7 +839,7 @@ int main(int argc, char** argv)
       continue;
     }
 
-    g_closest_waypoint = getClosestWaypoint(g_path_change.getCurrentWaypoints(), g_control_pose.pose);
+    g_closest_waypoint = getClosestIndex(g_path_change.getCurrentWaypoints(), g_control_pose.pose);
 
     std_msgs::Int32 closest_waypoint;
     closest_waypoint.data = g_closest_waypoint;

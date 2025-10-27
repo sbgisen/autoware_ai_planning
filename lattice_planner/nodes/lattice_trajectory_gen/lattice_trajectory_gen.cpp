@@ -598,7 +598,7 @@ int main(int argc, char** argv)
     }
 
     // Get the closest waypoinmt
-    int closest_waypoint = getClosestWaypoint(g_current_waypoints.getCurrentWaypoints(), g_current_pose.pose);
+    int closest_waypoint = getClosestIndex(g_current_waypoints.getCurrentWaypoints(), g_current_pose.pose);
     ROS_INFO_STREAM("closest waypoint = " << closest_waypoint);
 
     // If the current  waypoint has a valid index
