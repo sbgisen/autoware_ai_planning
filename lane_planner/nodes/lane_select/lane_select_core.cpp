@@ -167,7 +167,7 @@ void LaneSelectNode::processing(const ros::TimerEvent& e)
     try
     {
       changeLane();
-      std::get<1>(lane_for_change_) = getClosestWaypointNumber(
+      std::get<1>(lane_for_change_) = updateClosestIndexOnLane(
           std::get<0>(lane_for_change_), current_pose_.pose, current_velocity_.twist, std::get<1>(lane_for_change_),
           distance_threshold_, search_closest_waypoint_minimum_dt_);
       std::get<2>(lane_for_change_) = static_cast<ChangeFlag>(
@@ -328,7 +328,7 @@ bool LaneSelectNode::updateClosestIndexForEachLane()
   for (auto& el : tuple_vec_)
   {
     std::get<1>(el) =
-        getClosestWaypointNumber(std::get<0>(el), current_pose_.pose, current_velocity_.twist, std::get<1>(el),
+        updateClosestIndexOnLane(std::get<0>(el), current_pose_.pose, current_velocity_.twist, std::get<1>(el),
                                  distance_threshold_, search_closest_waypoint_minimum_dt_);
   }
 
@@ -774,7 +774,7 @@ double getRelativeAngle(const geometry_msgs::Pose& waypoint_pose, const geometry
 }
 
 // get closest waypoint from current pose
-int32_t getClosestWaypointNumber(const autoware_msgs::Lane& current_lane, const geometry_msgs::Pose& current_pose,
+int32_t updateClosestIndexOnLane(const autoware_msgs::Lane& current_lane, const geometry_msgs::Pose& current_pose,
                                  const geometry_msgs::Twist& current_velocity, const int32_t previous_number,
                                  const double distance_threshold, const int search_closest_waypoint_minimum_dt)
 {

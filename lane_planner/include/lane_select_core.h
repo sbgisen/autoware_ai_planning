@@ -167,7 +167,7 @@ private:
   }
 };
 
-int32_t getClosestWaypointNumber(const autoware_msgs::Lane& current_lane, const geometry_msgs::Pose& current_pose,
+int32_t updateClosestIndexOnLane(const autoware_msgs::Lane& current_lane, const geometry_msgs::Pose& current_pose,
                                  const geometry_msgs::Twist& current_velocity, const int32_t previous_number,
                                  const double distance_threshold, const int search_closest_waypoint_minimum_dt);
 
