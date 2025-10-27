@@ -171,7 +171,7 @@ void AstarAvoid::run()
       {
         ROS_INFO("Found obstacle while AVOIDING -> replanning");
       }
-      if (planAvoidWaypoints(avoid_goal_merged_index_))
+      if (planAvoidWaypoints())
       {
         ROS_INFO("PLANNING -> AVOIDING, Found path");
         state_ = AstarAvoid::STATE::AVOIDING;
@@ -253,7 +253,7 @@ bool AstarAvoid::checkInitialized()
   return initialized;
 }
 
-bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
+bool AstarAvoid::planAvoidWaypoints()
 {
   bool found_path = false;
 
@@ -319,7 +319,7 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
       pub.publish(astar_.getPath());
       avoid_start_global_index_ = plan_start_global_index;
       avoid_goal_global_index_ = obstacle_global_index;
-      mergeAvoidWaypoints(astar_.getPath(), avoid_start_global_index_, avoid_goal_global_index_, end_of_avoid_index);
+      mergeAvoidWaypoints(astar_.getPath(), avoid_start_global_index_, avoid_goal_global_index_);
       if (!avoid_merged_waypoints_.waypoints.empty())
       {
         avoid_current_merged_index_ = avoid_start_global_index_;
@@ -340,8 +340,7 @@ bool AstarAvoid::planAvoidWaypoints(int& end_of_avoid_index)
   return false;
 }
 
-void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index,
-                                     int& end_of_avoid_index)
+void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index)
 {
   if (start_index == -1 || goal_index == -1)
   {
@@ -371,9 +370,6 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
   {
     avoid_merged_waypoints_.waypoints.push_back(global_waypoints_.waypoints.at(i));
   }
-
-  // update index for merged waypoints
-  end_of_avoid_index = start_index + path.poses.size();
 }
 
 void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)

@@ -121,9 +121,8 @@ private:
 
   // functions
   bool checkInitialized();
-  bool planAvoidWaypoints(int& end_of_avoid_index);
-  void mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index,
-                           int& end_of_avoid_index);
+  bool planAvoidWaypoints();
+  void mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index);
   tf::Transform getTransform(const std::string& from, const std::string& to);
 
   // Find closest waypoint index within a search_size around the previous closest waypoint
