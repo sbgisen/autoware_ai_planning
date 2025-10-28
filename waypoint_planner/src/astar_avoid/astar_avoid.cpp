@@ -34,6 +34,7 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<double>("vel_min", vel_min_, 0.72);
 
   safety_waypoints_pub_ = nh_.advertise<autoware_msgs::Lane>("safety_waypoints", 1, true);
+  debug_pub_ = nh_.advertise<nav_msgs::Path>("debug", 1, true);
   costmap_sub_ = nh_.subscribe("costmap", 1, &AstarAvoid::costmapCallback, this);
   current_pose_sub_ = nh_.subscribe("current_pose", 1, &AstarAvoid::currentPoseCallback, this);
   current_velocity_sub_ = nh_.subscribe("current_velocity", 1, &AstarAvoid::currentVelocityCallback, this);
@@ -323,11 +324,9 @@ bool AstarAvoid::planAvoidWaypoints()
     // execute astar search
     found_path = astar_.makePlan(current_pose_local_.pose, goal_pose_local_.pose);
 
-    static ros::Publisher pub = nh_.advertise<nav_msgs::Path>("debug", 1, true);
-
     if (found_path)
     {
-      pub.publish(astar_.getPath());
+      debug_pub_.publish(astar_.getPath());
       avoid_start_global_index_ = plan_start_global_index;
       avoid_goal_global_index_ = obstacle_global_index;
       mergeAvoidWaypoints(astar_.getPath(), avoid_start_global_index_, avoid_goal_global_index_, tf_global2local_start);
