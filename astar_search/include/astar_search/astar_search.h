@@ -28,7 +28,7 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <geometry_msgs/PoseArray.h>
 #include <nav_msgs/Path.h>
-
+#include <unordered_set>
 #include "astar_search/astar_util.h"
 
 class AstarSearch
@@ -40,11 +40,22 @@ public:
   ~AstarSearch();
   void initialize(const nav_msgs::OccupancyGrid& costmap);
   bool makePlan(const geometry_msgs::Pose& start_pose, const geometry_msgs::Pose& goal_pose);
+  bool makePlan(const geometry_msgs::Pose& start_pose, const std::vector<geometry_msgs::Pose>& goal_pose);
+  bool makePlan(const std::vector<geometry_msgs::Pose>& start_pose, const geometry_msgs::Pose& goal_pose);
+  bool makePlan(const std::vector<geometry_msgs::Pose>& start_pose, const std::vector<geometry_msgs::Pose>& goal_pose);
   void reset();
 
   const nav_msgs::Path& getPath() const
   {
     return path_;
+  }
+  int getGoalIndex() const
+  {
+    return reached_goal_index_;
+  }
+  int getStartIndex() const
+  {
+    return reached_start_index_;
   }
 
 private:
@@ -61,6 +72,7 @@ private:
   bool detectCollision(const SimpleNode& sn);
   bool calcWaveFrontHeuristic(const SimpleNode& sn);
   bool detectCollisionWaveFront(const WaveFrontNode& sn);
+  void resetStartGoalNodes();
 
   // ros param
   ros::NodeHandle n_;
@@ -105,12 +117,16 @@ private:
   nav_msgs::OccupancyGrid costmap_;
 
   // pose in costmap frame
-  geometry_msgs::PoseStamped start_pose_local_;
-  geometry_msgs::PoseStamped goal_pose_local_;
-  double goal_yaw_;
+  std::vector<geometry_msgs::Pose> start_pose_local_;
+  std::vector<geometry_msgs::Pose> goal_pose_local_;
 
   // result path
   nav_msgs::Path path_;
+  std::vector<int> start_indices_;
+  int input_goal_count_;
+  std::vector<int> goal_indices_;
+  int reached_start_index_;
+  int reached_goal_index_;
 };
 
 #endif

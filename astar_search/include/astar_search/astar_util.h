@@ -84,9 +84,9 @@ inline double calcDistance(double x1, double y1, double x2, double y2)
 
 inline double modifyTheta(double theta)
 {
-  if (theta < 0.0)
+  if (theta < -M_PI)
     return theta + 2.0 * M_PI;
-  if (theta >= 2.0 * M_PI)
+  if (theta > M_PI)
     return theta - 2.0 * M_PI;
 
   return theta;
@@ -130,11 +130,12 @@ inline geometry_msgs::Point calcRelativeCoordinate(geometry_msgs::Pose pose, tf:
 
 inline double calcDiffOfRadian(double a, double b)
 {
-  double diff = std::fmod(std::fabs(a - b), 2.0 * M_PI);
-  if (diff < M_PI)
-    return diff;
-  else
-    return 2.0 * M_PI - diff;
+  double diff = a - b;
+  if (diff > M_PI)
+    diff -= 2.0 * M_PI;
+  else if (diff < -M_PI)
+    diff += 2.0 * M_PI;
+  return diff;
 }
 
 inline geometry_msgs::Pose xytToPoseMsg(double x, double y, double theta)

@@ -290,6 +290,9 @@ bool AstarAvoid::planAvoidWaypoints()
   }
 
   // update goal pose incrementally and execute A* search
+  std::vector<geometry_msgs::Pose> goal_poses;
+  std::vector<int> goal_indices;
+
   for (int i = search_waypoints_delta_; i < static_cast<int>(search_waypoints_size_); i += search_waypoints_delta_)
   {
     // update goal index
@@ -317,36 +320,51 @@ bool AstarAvoid::planAvoidWaypoints()
     goal_pose_global_ = global_waypoints_.waypoints[obstacle_global_index].pose;
     goal_pose_local_.header = costmap_.header;
     goal_pose_local_.pose = transformPose(goal_pose_global_.pose, tf_global2local_start.inverse());
-
-    // initialize costmap for A* search
-    astar_.initialize(costmap_);
-
-    // execute astar search
-    found_path = astar_.makePlan(current_pose_local_.pose, goal_pose_local_.pose);
-
-    if (found_path && !astar_.getPath().poses.empty())
-    {
-      debug_pub_.publish(astar_.getPath());
-      avoid_start_global_index_ = plan_start_global_index;
-      avoid_goal_global_index_ = obstacle_global_index;
-      mergeAvoidWaypoints(astar_.getPath(), avoid_start_global_index_, avoid_goal_global_index_, tf_global2local_start);
-      if (!avoid_merged_waypoints_.waypoints.empty())
-      {
-        avoid_current_merged_index_ = avoid_start_global_index_;
-        avoid_goal_merged_index_ = avoid_start_global_index_ + astar_.getPath().poses.size();
-        ROS_INFO("Found GOAL at avoid_goal_global_index = %d", avoid_goal_global_index_);
-        astar_.reset();
-        return true;
-      }
-      else
-      {
-        found_path = false;
-      }
-    }
-    astar_.reset();
+    goal_poses.push_back(goal_pose_local_.pose);
+    goal_indices.push_back(obstacle_global_index);
   }
 
-  ROS_ERROR("Can't find goal...");
+  if (goal_poses.empty())
+  {
+    ROS_ERROR("Can't find goal. current_global_index_ = %d, obstacle_local_index_ = %d, global_waypoints_size = %zu",
+              current_global_index_, obstacle_local_index_, global_waypoints_.waypoints.size());
+    return false;
+  }
+
+  // Get transform from base to avoid
+  // initialize costmap for A* search
+  astar_.initialize(costmap_);
+
+  // execute astar search
+  found_path = astar_.makePlan(current_pose_local_.pose, goal_poses);
+  if (found_path && !astar_.getPath().poses.empty())
+  {
+    debug_pub_.publish(astar_.getPath());
+    avoid_start_global_index_ = plan_start_global_index;
+    // Get reached goal index
+    avoid_goal_global_index_ = goal_indices.at(astar_.getGoalIndex());
+    avoid_goal_merged_index_ = avoid_start_global_index_ + static_cast<int>(astar_.getPath().poses.size());
+    mergeAvoidWaypoints(astar_.getPath(), avoid_start_global_index_, avoid_goal_global_index_, tf_global2local_start);
+    if (!avoid_merged_waypoints_.waypoints.empty())
+    {
+      avoid_current_merged_index_ = avoid_start_global_index_;
+      ROS_INFO("Found GOAL at goal_index = %d, current_index = %d, path_size = %zu", avoid_goal_global_index_,
+               avoid_start_global_index_, astar_.getPath().poses.size());
+      astar_.reset();
+      return true;
+    }
+    else
+    {
+      ROS_ERROR("Wrong path detected. goal_index = %d, avoid_merged_waypoints_size = %zu", avoid_goal_global_index_,
+                avoid_merged_waypoints_.waypoints.size());
+      found_path = false;
+    }
+  }
+
+  ROS_ERROR("Can't find goal. Retry. current_global_index_ = %d, obstacle_local_index_ = %d, global_waypoints_size = "
+            "%zu",
+            current_global_index_, obstacle_local_index_, global_waypoints_.waypoints.size());
+  astar_.reset();
   return false;
 }
 
@@ -417,7 +435,6 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   autoware_msgs::Lane current_waypoints;
   int current_index;
 
-  // Update avoiding index
   if (select_way_ == AstarAvoid::WayType::AVOID)
   {
     current_waypoints = avoid_merged_waypoints_;

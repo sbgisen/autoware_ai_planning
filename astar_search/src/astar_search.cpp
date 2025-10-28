@@ -51,6 +51,7 @@ AstarSearch::AstarSearch()
   private_nh_.param<double>("distance_heuristic_weight", distance_heuristic_weight_, 1.0);
 
   createStateUpdateTable();
+  resetStartGoalNodes();
 }
 
 AstarSearch::~AstarSearch()
@@ -201,6 +202,8 @@ void AstarSearch::initialize(const nav_msgs::OccupancyGrid& costmap)
 
 bool AstarSearch::makePlan(const geometry_msgs::Pose& start_pose, const geometry_msgs::Pose& goal_pose)
 {
+  resetStartGoalNodes();
+
   if (!setStartNode(start_pose))
   {
     ROS_DEBUG("Invalid start pose");
@@ -216,24 +219,134 @@ bool AstarSearch::makePlan(const geometry_msgs::Pose& start_pose, const geometry
   return search();
 }
 
+bool AstarSearch::makePlan(const geometry_msgs::Pose& start_pose, const std::vector<geometry_msgs::Pose>& goal_poses)
+{
+  resetStartGoalNodes();
+
+  if (!setStartNode(start_pose))
+    return false;
+
+  int ok_goal = 0;
+  for (const auto& g : goal_poses)
+  {
+    if (setGoalNode(g))
+      ++ok_goal;
+  }
+  if (ok_goal == 0)
+    return false;
+
+  if (!search())
+    return false;
+
+  reached_start_index_ = 0;
+  return true;
+}
+
+bool AstarSearch::makePlan(const std::vector<geometry_msgs::Pose>& start_poses, const geometry_msgs::Pose& goal_pose)
+{
+  resetStartGoalNodes();
+
+  // Temporarily swap base2back within this function
+  const double base2back_backup = robot_base2back_;
+  robot_base2back_ = robot_length_ - robot_base2back_;
+
+  // Reverse search start = original goal
+  if (!setStartNode(goal_pose))
+  {
+    robot_base2back_ = base2back_backup;
+    return false;
+  }
+
+  // Reverse search goals = original start poses
+  int ok_goal = 0;
+  for (const auto& sp : start_poses)
+  {
+    if (setGoalNode(sp))
+      ++ok_goal;
+  }
+  if (ok_goal == 0)
+  {
+    robot_base2back_ = base2back_backup;
+    return false;
+  }
+
+  const bool ok = search();
+  robot_base2back_ = base2back_backup;
+  if (!ok)
+    return false;
+
+  // In reverse search, reached_goal_index_ indicates the index of the reached original start
+  reached_start_index_ = reached_goal_index_;
+
+  // The result is from the original goal to the best start, so just reverse the order
+  // (the z sign is not inverted)
+  std::reverse(path_.poses.begin(), path_.poses.end());
+  return true;
+}
+
+bool AstarSearch::makePlan(const std::vector<geometry_msgs::Pose>& start_poses,
+                           const std::vector<geometry_msgs::Pose>& goal_poses)
+{
+  resetStartGoalNodes();
+
+  // Insert multiple start poses into OPEN (this also pushes them into start_pose_local_)
+  int ok_start = 0;
+  for (const auto& s : start_poses)
+    if (setStartNode(s))
+      ++ok_start;
+  if (ok_start == 0)
+    return false;
+
+  // Register multiple goal poses
+  int ok_goal = 0;
+  for (const auto& g : goal_poses)
+  {
+    if (setGoalNode(g))
+      ++ok_goal;
+  }
+  if (ok_goal == 0)
+    return false;
+
+  if (!search())
+    return false;
+
+  // Identify the actually adopted start by finding the closest to path_.poses.front()
+  if (path_.poses.empty())
+    return false;
+  const auto& p0 = path_.poses.front().pose.position;
+
+  int best = -1;
+  double best_d2 = std::numeric_limits<double>::infinity();
+  for (int i = 0; i < static_cast<int>(start_poses.size()); ++i)
+  {
+    double dx = p0.x - start_poses[i].position.x;
+    double dy = p0.y - start_poses[i].position.y;
+    double d2 = dx * dx + dy * dy;
+    if (d2 < best_d2)
+    {
+      best_d2 = d2;
+      best = i;
+    }
+  }
+  reached_start_index_ = best;
+  return true;
+}
+
 bool AstarSearch::setStartNode(const geometry_msgs::Pose& start_pose)
 {
   // Get index of start pose
   int index_x, index_y, index_theta;
-  start_pose_local_.pose = start_pose;
-  poseToIndex(start_pose_local_.pose, &index_x, &index_y, &index_theta);
+  poseToIndex(start_pose, &index_x, &index_y, &index_theta);
   SimpleNode start_sn(index_x, index_y, index_theta, 0, 0);
 
   // Check if start is valid
   if (isOutOfRange(index_x, index_y) || detectCollision(start_sn))
-  {
     return false;
-  }
 
   // Set start node
   AstarNode& start_node = nodes_[index_y][index_x][index_theta];
-  start_node.x = start_pose_local_.pose.position.x;
-  start_node.y = start_pose_local_.pose.position.y;
+  start_node.x = start_pose.position.x;
+  start_node.y = start_pose.position.y;
   start_node.theta = 2.0 * M_PI / theta_size_ * index_theta;
   start_node.gc = 0;
   start_node.move_distance = 0;
@@ -244,57 +357,42 @@ bool AstarSearch::setStartNode(const geometry_msgs::Pose& start_pose)
   // set euclidean distance heuristic cost
   if (!use_wavefront_heuristic_ && !use_potential_heuristic_)
   {
-    start_node.hc = calcDistance(start_pose_local_.pose.position.x, start_pose_local_.pose.position.y,
-                                 goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) *
-                    distance_heuristic_weight_;
+    start_node.hc = path_length_limit_ * distance_heuristic_weight_;
   }
   else if (use_potential_heuristic_)
   {
     start_node.gc += start_node.hc;
-    start_node.hc += calcDistance(start_pose_local_.pose.position.x, start_pose_local_.pose.position.y,
-                                  goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) +
-                     distance_heuristic_weight_;
+    start_node.hc += path_length_limit_ + distance_heuristic_weight_;
   }
 
   // Push start node to openlist
   start_sn.cost = start_node.gc + start_node.hc;
   openlist_.push(start_sn);
-
+  start_pose_local_.push_back(start_pose);
+  start_indices_.push_back(start_pose_local_.size() - 1);
   return true;
 }
 
 bool AstarSearch::setGoalNode(const geometry_msgs::Pose& goal_pose)
-{
-  goal_pose_local_.pose = goal_pose;
-  goal_yaw_ = modifyTheta(tf::getYaw(goal_pose_local_.pose.orientation));
-
-  // Get index of goal pose
+{  // Get index of goal pose
   int index_x, index_y, index_theta;
-  poseToIndex(goal_pose_local_.pose, &index_x, &index_y, &index_theta);
+  poseToIndex(goal_pose, &index_x, &index_y, &index_theta);
   SimpleNode goal_sn(index_x, index_y, index_theta, 0, 0);
+  input_goal_count_++;
 
   // Check if goal is valid
   if (isOutOfRange(index_x, index_y) || detectCollision(goal_sn))
-  {
     return false;
-  }
 
   // Calculate wavefront heuristic cost
   if (use_wavefront_heuristic_)
   {
-    // auto start = std::chrono::system_clock::now();
     bool wavefront_result = calcWaveFrontHeuristic(goal_sn);
-    // auto end = std::chrono::system_clock::now();
-    // auto usec = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    // std::cout << "wavefront : " << usec / 1000.0 << "[msec]" << std::endl;
-
     if (!wavefront_result)
-    {
-      ROS_DEBUG("Reachable is false...");
       return false;
-    }
   }
-
+  goal_pose_local_.push_back(goal_pose);
+  goal_indices_.push_back(input_goal_count_);
   return true;
 }
 
@@ -384,10 +482,13 @@ bool AstarSearch::search()
 
       // Increase reverse cost
       if (current_an->back)
+      {
         move_cost *= reverse_weight_;
+      }
       if (state.back != current_an->back)
+      {
         move_cost += switch_back_cost_;
-
+      }
       // Increase curve cost
       double curve_cost_scale = std::max(0.0, 1.0 + (fabs(state.rotation) * (curve_weight_ - 1.0)));
       move_cost *= curve_cost_scale;
@@ -414,20 +515,28 @@ bool AstarSearch::search()
       double next_hc = nodes_[next_sn.index_y][next_sn.index_x][0].hc;  // wavefront or distance transform heuristic
 
       // increase the cost with euclidean distance
+      geometry_msgs::Pose nearest_goal = goal_pose_local_[0];
+      double nearest_distance = DBL_MAX;
+      for (int i = 0; i < static_cast<int>(goal_pose_local_.size()); i++)
+      {
+        double distance = calcDistance(next_x, next_y, goal_pose_local_[i].position.x, goal_pose_local_[i].position.y);
+        if (distance < nearest_distance)
+        {
+          nearest_distance = distance;
+          nearest_goal = goal_pose_local_[i];
+        }
+      }
       if (use_potential_heuristic_)
       {
         next_gc += nodes_[next_sn.index_y][next_sn.index_x][0].hc;
-        next_hc += calcDistance(next_x, next_y, goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) *
-                   distance_heuristic_weight_;
+        next_hc += nearest_distance * distance_heuristic_weight_;
       }
 
       // increase the cost with euclidean distance
       if (!use_wavefront_heuristic_ && !use_potential_heuristic_)
       {
-        next_hc = calcDistance(next_x, next_y, goal_pose_local_.pose.position.x, goal_pose_local_.pose.position.y) *
-                  distance_heuristic_weight_;
+        next_hc = nearest_distance * distance_heuristic_weight_;
       }
-
       // Ignore invalit nodes
       if ((enable_path_angle_limit_ && move_angle > path_angle_limit_) ||
           (enable_path_length_limit_ && move_distance > path_length_limit_))
@@ -504,9 +613,13 @@ void AstarSearch::setPath(const SimpleNode& goal)
     tf::poseTFToMsg(tf_pose, ros_pose.pose);
     ros_pose.header = header;
     if (node->back)
+    {
       ros_pose.pose.position.z = -1.0;
+    }
     else
+    {
       ros_pose.pose.position.z = 1.0;
+    }
     path_.poses.push_back(ros_pose);
 
     // To the next node
@@ -521,50 +634,46 @@ void AstarSearch::setPath(const SimpleNode& goal)
 // Check lateral offset, longitudinal offset and angle
 bool AstarSearch::isGoal(double x, double y, double theta)
 {
-  // To reduce computation time, we use square value for distance
-  static const double lateral_goal_range =
-      lateral_goal_range_ / 2.0;  // [meter], divide by 2 means we check left and right
-  static const double longitudinal_goal_range =
-      longitudinal_goal_range_ / 2.0;                                         // [meter], check only behind of the goal
-  static const double goal_angle = M_PI * (angle_goal_range_ / 2.0) / 180.0;  // degrees -> radian
-
-  // Calculate the node coordinate seen from the goal point
-  tf::Point p(x, y, 0);
-  geometry_msgs::Point relative_node_point = calcRelativeCoordinate(goal_pose_local_.pose, p);
-
-  // Check Pose of goal
-  if (relative_node_point.x < 0 &&  // shoud be behind of goal
-      std::fabs(relative_node_point.x) < longitudinal_goal_range &&
-      std::fabs(relative_node_point.y) < lateral_goal_range)
+  for (int goal_num = static_cast<int>(goal_pose_local_.size()) - 1; goal_num >= 0; goal_num--)
   {
-    // Check the orientation of goal
-    if (calcDiffOfRadian(goal_yaw_, theta) < goal_angle)
+    // To reduce computation time, we use square value for distance
+    static const double lateral_goal_range =
+        lateral_goal_range_ / 2.0;  // [meter], divide by 2 means we check left and right
+    static const double longitudinal_goal_range =
+        longitudinal_goal_range_ / 2.0;  // [meter], check only behind of the goal
+    static const double yaw_goal_range = M_PI * (angle_goal_range_ / 2.0) / 180.0;  // degrees -> radian
+
+    // Calculate the node coordinate seen from the goal point
+    tf::Point p(x, y, 0);
+    geometry_msgs::Point relative_node_point = calcRelativeCoordinate(goal_pose_local_[goal_num], p);
+
+    // Check Pose of goal
+    double goal_yaw = tf::getYaw(goal_pose_local_[goal_num].orientation);
+    if (std::fabs(relative_node_point.x) < longitudinal_goal_range &&
+        std::fabs(relative_node_point.y) < lateral_goal_range &&
+        std::fabs(calcDiffOfRadian(goal_yaw, theta)) < yaw_goal_range)
     {
+      reached_goal_index_ = goal_indices_.at(goal_num);
       return true;
     }
   }
-
+  reached_goal_index_ = 0;
   return false;
 }
 
 bool AstarSearch::isObs(int index_x, int index_y)
 {
-  if (nodes_[index_y][index_x][0].status == STATUS::OBS)
-  {
-    return true;
-  }
-
-  return false;
+  return nodes_[index_y][index_x][0].status == STATUS::OBS;
 }
 
 bool AstarSearch::detectCollision(const SimpleNode& sn)
 {
   // Define the robot as rectangle
-  static double left = -1.0 * robot_base2back_;
-  static double right = robot_length_ - robot_base2back_;
-  static double top = robot_width_ / 2.0;
-  static double bottom = -1.0 * robot_width_ / 2.0;
-  static double resolution = costmap_.info.resolution;
+  const double left = -robot_base2back_;
+  const double right = robot_length_ - robot_base2back_;
+  const double top = robot_width_ / 2.0;
+  const double bottom = -robot_width_ / 2.0;
+  const double resolution = costmap_.info.resolution;
 
   // Coordinate of base_link in OccupancyGrid frame
   static double one_angle_range = 2.0 * M_PI / theta_size_;
@@ -586,16 +695,11 @@ bool AstarSearch::detectCollision(const SimpleNode& sn)
       int index_y = (x * sin_theta + y * cos_theta + base_y) / resolution;
 
       if (isOutOfRange(index_x, index_y))
-      {
         return true;
-      }
       else if (nodes_[index_y][index_x][0].status == STATUS::OBS)
-      {
         return true;
-      }
     }
   }
-
   return false;
 }
 
@@ -621,52 +725,52 @@ bool AstarSearch::calcWaveFrontHeuristic(const SimpleNode& sn)
     getWaveFrontNode(-1, -1, std::hypot(resolution, resolution)),
     getWaveFrontNode(1, -1, std::hypot(resolution, resolution)),
   };
-
-  // Get start index
-  int start_index_x;
-  int start_index_y;
-  int start_index_theta;
-  poseToIndex(start_pose_local_.pose, &start_index_x, &start_index_y, &start_index_theta);
-
   // Whether the robot can reach goal
   bool reachable = false;
-
-  // Start wavefront search
-  while (!qu.empty())
+  for (const auto& sp : start_pose_local_)
   {
-    WaveFrontNode ref = qu.front();
-    qu.pop();
+    // Get start index
+    int start_index_x;
+    int start_index_y;
+    int start_index_theta;
+    poseToIndex(sp, &start_index_x, &start_index_y, &start_index_theta);
 
-    WaveFrontNode next;
-    for (const auto& u : updates)
+    // Start wavefront search
+    while (!qu.empty())
     {
-      next.index_x = ref.index_x + u.index_x;
-      next.index_y = ref.index_y + u.index_y;
+      WaveFrontNode ref = qu.front();
+      qu.pop();
 
-      // out of range OR already visited OR obstacle node
-      if (isOutOfRange(next.index_x, next.index_y) || nodes_[next.index_y][next.index_x][0].hc > 0 ||
-          nodes_[next.index_y][next.index_x][0].status == STATUS::OBS)
+      WaveFrontNode next;
+      for (const auto& u : updates)
       {
-        continue;
+        next.index_x = ref.index_x + u.index_x;
+        next.index_y = ref.index_y + u.index_y;
+
+        // out of range OR already visited OR obstacle node
+        if (isOutOfRange(next.index_x, next.index_y) || nodes_[next.index_y][next.index_x][0].hc > 0 ||
+            nodes_[next.index_y][next.index_x][0].status == STATUS::OBS)
+        {
+          continue;
+        }
+
+        // Take the size of robot into account
+        if (detectCollisionWaveFront(next))
+        {
+          continue;
+        }
+
+        // Check if we can reach from start to goal
+        if (next.index_x == start_index_x && next.index_y == start_index_y)
+        {
+          reachable = true;
+        }
+
+        // Set wavefront heuristic cost
+        next.hc = ref.hc + u.hc;
+        nodes_[next.index_y][next.index_x][0].hc = next.hc;
+        qu.push(next);
       }
-
-      // Take the size of robot into account
-      if (detectCollisionWaveFront(next))
-      {
-        continue;
-      }
-
-      // Check if we can reach from start to goal
-      if (next.index_x == start_index_x && next.index_y == start_index_y)
-      {
-        reachable = true;
-      }
-
-      // Set wavefront heuristic cost
-      next.hc = ref.hc + u.hc;
-      nodes_[next.index_y][next.index_x][0].hc = next.hc;
-
-      qu.push(next);
     }
   }
 
@@ -712,8 +816,6 @@ void AstarSearch::reset()
   std::priority_queue<SimpleNode, std::vector<SimpleNode>, std::greater<SimpleNode>> empty;
   std::swap(openlist_, empty);
 
-  // ros::WallTime begin = ros::WallTime::now();
-
   // Reset node info here ...?
   for (size_t i = 0; i < costmap_.info.height; i++)
   {
@@ -728,7 +830,16 @@ void AstarSearch::reset()
     }
   }
 
-  // ros::WallTime end = ros::WallTime::now();
+  resetStartGoalNodes();
+}
 
-  // ROS_INFO("Reset time: %lf [ms]", (end - begin).toSec() * 1000);
+void AstarSearch::resetStartGoalNodes()
+{
+  start_pose_local_.clear();
+  goal_pose_local_.clear();
+  start_indices_.clear();
+  goal_indices_.clear();
+  reached_start_index_ = -1;
+  reached_goal_index_ = -1;
+  input_goal_count_ = -1;
 }
