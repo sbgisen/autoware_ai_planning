@@ -27,7 +27,6 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<double>("replan_interval", replan_interval_, 2.0);
   private_nh_.param<int>("search_waypoints_size", search_waypoints_size_, 50);
   private_nh_.param<int>("search_waypoints_delta", search_waypoints_delta_, 2);
-  private_nh_.param<int>("closest_search_size", closest_search_size_, 30);
   private_nh_.param<int>("stopline_ahead_num", stopline_ahead_num_, 1);
 
   safety_waypoints_pub_ = nh_.advertise<autoware_msgs::Lane>("safety_waypoints", 1, true);
@@ -389,7 +388,7 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
   }
 
   // Update the current point in the selected lane.
-  next_index = updateClosestIndex(current_waypoints_, current_index, current_pose_global_.pose, closest_search_size_);
+  next_index = updateCurrentIndex(current_waypoints_, current_pose_global_.pose, current_index);
 
   if (next_index == -1)
   {
@@ -450,46 +449,4 @@ tf::Transform AstarAvoid::getTransform(const std::string& from, const std::strin
     ROS_ERROR("%s", ex.what());
   }
   return stf;
-}
-
-int AstarAvoid::updateClosestIndex(const autoware_msgs::Lane& waypoints, const int previous_index,
-                                   const geometry_msgs::Pose& pose, const int& search_size)
-{
-  int next_index = previous_index;
-  // search in all waypoints if lane_select judges you're not on waypoints
-  if (previous_index == -1)
-  {
-    ROS_WARN("[AstarAvoid::updateClosestWaypoint] previous_index == -1, -> RELAYING");
-    state_ = AstarAvoid::STATE::RELAYING;
-    select_way_ = AstarAvoid::STATE::RELAYING;
-    next_index = closest_global_index_;
-    current_global_index_ = closest_global_index_;
-    avoid_current_merged_index_ = closest_global_index_;
-  }
-  else
-  {
-    // search within a limited area around previous_index found in the previous loop.
-    const int start_index = std::max(0, previous_index - search_size / 2);
-    const int end_index = std::min(start_index + search_size, static_cast<int>(waypoints.waypoints.size()));
-
-    // consists of search_size/2 waypoints before and after the vehicle.
-    autoware_msgs::Lane local_waypoints;
-    local_waypoints.waypoints = std::vector<autoware_msgs::Waypoint>(waypoints.waypoints.begin() + start_index,
-                                                                     waypoints.waypoints.begin() + end_index);
-    int closest_local_index = getClosestIndex(local_waypoints, pose);
-    if (closest_local_index != -1)
-    {
-      next_index = start_index + closest_local_index;
-    }
-    else
-    {
-      ROS_WARN("[AstarAvoid::updateClosestIndex] getClosestIndex failed, -> RELAYING");
-      state_ = AstarAvoid::STATE::RELAYING;
-      select_way_ = AstarAvoid::STATE::RELAYING;
-      next_index = closest_global_index_;
-      current_global_index_ = closest_global_index_;
-      avoid_current_merged_index_ = closest_global_index_;
-    }
-  }
-  return next_index;
 }
