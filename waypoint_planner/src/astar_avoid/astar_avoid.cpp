@@ -324,7 +324,7 @@ bool AstarAvoid::planAvoidWaypoints()
     // execute astar search
     found_path = astar_.makePlan(current_pose_local_.pose, goal_pose_local_.pose);
 
-    if (found_path)
+    if (found_path && !astar_.getPath().poses.empty())
     {
       debug_pub_.publish(astar_.getPath());
       avoid_start_global_index_ = plan_start_global_index;
