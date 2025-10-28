@@ -429,34 +429,49 @@ void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
     current_waypoints = global_waypoints_;
     current_index = current_global_index_;
   }
-
-  if (current_index == -1)
+  if (current_index < 0 || current_index >= static_cast<int>(current_waypoints.waypoints.size()))
   {
+    ROS_WARN("Invalid index: %d (between 0 and %d)", current_index,
+             static_cast<int>(current_waypoints.waypoints.size()));
+    astar_plan_status_ = AstarAvoid::AsterPlanStatus::FAILURE;
+    select_way_ = AstarAvoid::WayType::RELAY;
+    is_move_ = false;
     avoid_current_merged_index_ = -1;
-    current_global_index_ = -1;
     return;
   }
 
   // Create local path starting at closest global waypoint
-  autoware_msgs::Lane safety_waypoints;
-  safety_waypoints.header = current_waypoints.header;
-  safety_waypoints.increment = current_waypoints.increment;
-
+  autoware_msgs::Lane local_waypoints;
+  local_waypoints.header = current_waypoints.header;
+  local_waypoints.increment = current_waypoints.increment;
   for (int i = current_index;
        i < current_index + safety_waypoints_size_ && i < static_cast<int>(current_waypoints.waypoints.size()); ++i)
   {
-    safety_waypoints.waypoints.push_back(current_waypoints.waypoints[i]);
+    local_waypoints.waypoints.push_back(current_waypoints.waypoints[i]);
   }
 
-  if (!safety_waypoints.waypoints.empty())
+  if (!local_waypoints.waypoints.empty())
   {
-    safety_waypoints_pub_.publish(safety_waypoints);
+    safety_waypoints_pub_.publish(local_waypoints);
+  }
+  else
+  {
+    ROS_WARN("No waypoints to publish");
+    astar_plan_status_ = AstarAvoid::AsterPlanStatus::FAILURE;
+    select_way_ = AstarAvoid::WayType::RELAY;
+    is_move_ = false;
+    avoid_current_merged_index_ = -1;
   }
 }
 
 tf::Transform AstarAvoid::getTransform(const std::string& from, const std::string& to)
 {
   tf::StampedTransform stf;
+  if (from.empty() || to.empty())
+  {
+    ROS_ERROR("Invalid frame_id: form = %s, to = %s", from.c_str(), to.c_str());
+    return stf;
+  }
   try
   {
     tf_listener_.lookupTransform(from, to, ros::Time(0), stf);
@@ -464,6 +479,7 @@ tf::Transform AstarAvoid::getTransform(const std::string& from, const std::strin
   catch (const tf::TransformException& ex)
   {
     ROS_ERROR("%s", ex.what());
+    ROS_ERROR("Failed to get transform from %s to %s", from.c_str(), to.c_str());
   }
   return stf;
 }
