@@ -57,8 +57,11 @@ AstarAvoid::~AstarAvoid()
 void AstarAvoid::costmapCallback(const nav_msgs::OccupancyGrid& msg)
 {
   costmap_ = msg;
-  tf::poseMsgToTF(costmap_.info.origin, local2costmap_);
   costmap_initialized_ = true;
+  if (!current_pose_global_.header.frame_id.empty() && !costmap_.header.frame_id.empty())
+  {
+    tf_global2local_ = getTransform(current_pose_global_.header.frame_id, costmap_.header.frame_id);
+  }
 }
 
 void AstarAvoid::currentPoseCallback(const geometry_msgs::PoseStamped& msg)
@@ -69,10 +72,9 @@ void AstarAvoid::currentPoseCallback(const geometry_msgs::PoseStamped& msg)
   {
     current_pose_initialized_ = true;
   }
-  else
+  else if (!current_pose_global_.header.frame_id.empty() && !costmap_.header.frame_id.empty())
   {
-    current_pose_local_.pose = transformPose(
-        current_pose_global_.pose, getTransform(costmap_.header.frame_id, current_pose_global_.header.frame_id));
+    current_pose_local_.pose = transformPose(current_pose_global_.pose, tf_global2local_.inverse());
     current_pose_local_.header.frame_id = costmap_.header.frame_id;
     current_pose_local_.header.stamp = current_pose_global_.header.stamp;
     current_pose_initialized_ = true;
@@ -253,6 +255,7 @@ bool AstarAvoid::checkInitialized()
 bool AstarAvoid::planAvoidWaypoints()
 {
   bool found_path = false;
+  tf::Transform tf_global2local_start = tf_global2local_;
 
   if (current_global_index_ == -1)
   {
@@ -300,8 +303,7 @@ bool AstarAvoid::planAvoidWaypoints()
     // update goal pose
     goal_pose_global_ = global_waypoints_.waypoints[obstacle_global_index].pose;
     goal_pose_local_.header = costmap_.header;
-    goal_pose_local_.pose = transformPose(goal_pose_global_.pose,
-                                          getTransform(costmap_.header.frame_id, goal_pose_global_.header.frame_id));
+    goal_pose_local_.pose = transformPose(goal_pose_global_.pose, tf_global2local_start.inverse());
 
     // initialize costmap for A* search
     astar_.initialize(costmap_);

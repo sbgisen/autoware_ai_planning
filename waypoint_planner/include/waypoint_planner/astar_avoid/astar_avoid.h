@@ -117,7 +117,7 @@ private:
   geometry_msgs::PoseStamped current_pose_local_, current_pose_global_;
   geometry_msgs::PoseStamped goal_pose_local_, goal_pose_global_;
   geometry_msgs::TwistStamped current_velocity_;
-  tf::Transform local2costmap_;  // local frame (e.g. velodyne) -> costmap origin
+  tf::Transform tf_global2local_;
 
   bool costmap_initialized_ = false;
   bool current_pose_initialized_ = false;
