@@ -318,7 +318,7 @@ bool AstarAvoid::planAvoidWaypoints()
       pub.publish(astar_.getPath());
       avoid_start_global_index_ = plan_start_global_index;
       avoid_goal_global_index_ = obstacle_global_index;
-      mergeAvoidWaypoints(astar_.getPath(), avoid_start_global_index_, avoid_goal_global_index_);
+      mergeAvoidWaypoints(astar_.getPath(), avoid_start_global_index_, avoid_goal_global_index_, tf_global2local_start);
       if (!avoid_merged_waypoints_.waypoints.empty())
       {
         avoid_current_merged_index_ = avoid_start_global_index_;
@@ -341,14 +341,22 @@ bool AstarAvoid::planAvoidWaypoints()
 
 void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index)
 {
-  if (start_index == -1 || goal_index == -1)
-  {
+  tf::Transform global2local = getTransform(global_waypoints_.header.frame_id, path.poses.front().header.frame_id);
+  mergeAvoidWaypoints(path, start_index, goal_index, global2local);
+}
+
+void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index,
+                                     tf::Transform global2local)
+{
+  int start_index_in = start_index;
+  if (goal_index == -1 || goal_index < start_index)
     return;
-  }
+  if (start_index_in == -1)
+    start_index_in = 0;
 
   // add waypoints before start index
   avoid_merged_waypoints_.waypoints.clear();
-  for (int i = 0; i < start_index; ++i)
+  for (int i = 0; i < start_index_in; ++i)
   {
     avoid_merged_waypoints_.waypoints.push_back(global_waypoints_.waypoints.at(i));
   }
@@ -363,8 +371,7 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
       wp.pose.header = global_waypoints_.header;
       // if the next_pose.pose.position.z value is smaller than 0, it means that the path is backward
       direction = (pose.pose.position.z < 0) ? -1 : 1;
-      wp.pose.pose.position.z = 0;
-      wp.pose.pose = transformPose(pose.pose, getTransform(global_waypoints_.header.frame_id, pose.header.frame_id));
+      wp.pose.pose = transformPose(pose.pose, global2local);
       wp.pose.pose.position.z = current_pose_global_.pose.position.z;         // height = const
       wp.twist.twist.linear.x = direction * avoid_waypoints_velocity_ / 3.6;  // velocity = const
       avoid_merged_waypoints_.waypoints.push_back(wp);
@@ -376,7 +383,7 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
     {
       autoware_msgs::Waypoint wp;
       wp.pose.header = global_waypoints_.header;
-      wp.pose.pose = transformPose(pose.pose, getTransform(global_waypoints_.header.frame_id, pose.header.frame_id));
+      wp.pose.pose = transformPose(pose.pose, global2local);
       wp.pose.pose.position.z = current_pose_global_.pose.position.z;  // height = const
       wp.twist.twist.linear.x = avoid_waypoints_velocity_ / 3.6;       // velocity = const
       avoid_merged_waypoints_.waypoints.push_back(wp);
@@ -384,7 +391,7 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
   }
 
   // add waypoints after goal index
-  for (int i = goal_index; i < static_cast<int>(global_waypoints_.waypoints.size()); ++i)
+  for (int i = goal_index + 1; i < static_cast<int>(global_waypoints_.waypoints.size()); ++i)
   {
     avoid_merged_waypoints_.waypoints.push_back(global_waypoints_.waypoints.at(i));
   }

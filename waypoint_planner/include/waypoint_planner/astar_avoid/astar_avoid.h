@@ -137,6 +137,8 @@ private:
   bool checkInitialized();
   bool planAvoidWaypoints();
   void mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index);
+  void mergeAvoidWaypoints(const nav_msgs::Path& path, const int start_index, const int goal_index,
+                           tf::Transform base2avoid);
   tf::Transform getTransform(const std::string& from, const std::string& to);
 
   // publish safety waypoints using a timer
