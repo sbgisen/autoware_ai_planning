@@ -29,6 +29,9 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<int>("search_waypoints_size", search_waypoints_size_, 50);
   private_nh_.param<int>("search_waypoints_delta", search_waypoints_delta_, 2);
   private_nh_.param<int>("stopline_ahead_num", stopline_ahead_num_, 1);
+  private_nh_.param<double>("decel_limit", decel_limit_, 0.1);
+  private_nh_.param<double>("accel_limit", accel_limit_, 0.5);
+  private_nh_.param<double>("vel_min", vel_min_, 0.72);
 
   safety_waypoints_pub_ = nh_.advertise<autoware_msgs::Lane>("safety_waypoints", 1, true);
   costmap_sub_ = nh_.subscribe("costmap", 1, &AstarAvoid::costmapCallback, this);
@@ -383,6 +386,9 @@ void AstarAvoid::mergeAvoidWaypoints(const nav_msgs::Path& path, const int start
   {
     avoid_merged_waypoints_.waypoints.push_back(global_waypoints_.waypoints.at(i));
   }
+
+  // smoothing connection point
+  limitPathAccel(avoid_merged_waypoints_, accel_limit_, decel_limit_, (vel_min_ / 3.6));
 }
 
 void AstarAvoid::publishWaypoints(const ros::TimerEvent& e)
@@ -439,4 +445,104 @@ tf::Transform AstarAvoid::getTransform(const std::string& from, const std::strin
     ROS_ERROR("%s", ex.what());
   }
   return stf;
+}
+
+void AstarAvoid::limitPathAccel(autoware_msgs::Lane& path, double accel, double decel, double vel_min)
+{
+  if (path.waypoints.size() < 2)
+  {
+    return;
+  }
+
+  // Limit acceleration
+  double prev_vel = path.waypoints.front().twist.twist.linear.x;
+  for (size_t i = 1; i < path.waypoints.size(); ++i)
+  {
+    double dist =
+        amathutils::find_distance(path.waypoints[i - 1].pose.pose.position, path.waypoints[i].pose.pose.position);
+
+    double travel_time = 1.0;
+    if (fabs(prev_vel) > 0.0001)
+    {
+      travel_time = dist / fabs(prev_vel);
+    }
+
+    // Calculate velocity limits based on acceleration
+    double current_vel = path.waypoints[i].twist.twist.linear.x;
+    double vel_sign = (current_vel < 0) ? -1.0 : 1.0;
+
+    // Clamp the current velocity within the calculated limits
+    double vel_limited = current_vel;
+    if (vel_sign > 0)
+    {
+      vel_limited = std::min(vel_limited, prev_vel + accel * travel_time);
+      if (vel_limited < vel_min)
+      {
+        vel_limited = vel_min;
+      }
+    }
+    else
+    {
+      vel_limited = std::max(vel_limited, prev_vel - accel * travel_time);
+      if (vel_limited > -vel_min)
+      {
+        vel_limited = -vel_min;
+      }
+    }
+
+    // Only update the velocity if it's above vel_min to prevent unnecessary changes
+    if (std::fabs(current_vel) > vel_min)
+    {
+      path.waypoints[i].twist.twist.linear.x = vel_limited;
+    }
+
+    // Update previous velocity for the next iteration
+    prev_vel = path.waypoints[i].twist.twist.linear.x;
+  }
+
+  // Limit deceleration
+  double next_vel = path.waypoints.back().twist.twist.linear.x;
+  for (int i = static_cast<int>(path.waypoints.size()) - 2; i >= 0; --i)
+  {
+    double dist =
+        amathutils::find_distance(path.waypoints[i].pose.pose.position, path.waypoints[i + 1].pose.pose.position);
+
+    double travel_time = 1.0;
+    if (fabs(next_vel) > 0.0001)
+    {
+      travel_time = dist / fabs(next_vel);
+    }
+
+    // Calculate velocity limits based on deceleration
+    double current_vel = path.waypoints[i].twist.twist.linear.x;
+    double vel_sign = (current_vel < 0) ? -1.0 : 1.0;
+
+    // Clamp the current velocity within the calculated limits
+    double vel_limited = current_vel;
+    if (vel_sign > 0)
+    {
+      vel_limited = std::min(vel_limited, next_vel + decel * travel_time);
+      if (vel_limited < vel_min)
+      {
+        vel_limited = vel_min;
+      }
+    }
+    else
+    {
+      vel_limited = std::max(vel_limited, next_vel - decel * travel_time);
+      if (vel_limited > -vel_min)
+      {
+        vel_limited = -vel_min;
+      }
+    }
+
+    // Only update the velocity if it's above vel_min to prevent unnecessary changes
+    if (std::fabs(current_vel) > vel_min)
+    {
+      path.waypoints[i].twist.twist.linear.x = vel_limited;
+    }
+
+    // Update next velocity for the next iteration
+    next_vel = path.waypoints[i].twist.twist.linear.x;
+  }
 }
