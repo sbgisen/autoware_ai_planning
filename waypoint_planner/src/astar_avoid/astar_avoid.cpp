@@ -257,17 +257,25 @@ bool AstarAvoid::planAvoidWaypoints()
   bool found_path = false;
   tf::Transform tf_global2local_start = tf_global2local_;
 
-  if (current_global_index_ == -1)
+  if (current_global_index_ < 0 || current_global_index_ >= static_cast<int>(global_waypoints_.waypoints.size()))
   {
+    ROS_ERROR("Invalid current_global_index_ = %d", current_global_index_);
     return false;
   }
+  if (current_pose_global_.header.frame_id.empty() || costmap_.header.frame_id.empty())
+  {
+    ROS_ERROR("Invalid frame_id in current_pose(%s) or costmap(%s)", current_pose_global_.header.frame_id.c_str(),
+              costmap_.header.frame_id.c_str());
+    return false;
+  }
+
   int plan_start_global_index = current_global_index_;
 
-  auto it =
-      plan_start_global_index + obstacle_local_index_ + stopline_ahead_num_ + 1 > global_waypoints_.waypoints.size() ?
-          global_waypoints_.waypoints.end() :
-          global_waypoints_.waypoints.begin() + plan_start_global_index + obstacle_local_index_ + stopline_ahead_num_ +
-              1;
+  auto it = plan_start_global_index + obstacle_local_index_ + stopline_ahead_num_ + 1 >
+                    static_cast<int>(global_waypoints_.waypoints.size()) ?
+                global_waypoints_.waypoints.end() :
+                global_waypoints_.waypoints.begin() + plan_start_global_index + obstacle_local_index_ +
+                    stopline_ahead_num_ + 1;
   if (std::find_if(global_waypoints_.waypoints.begin() + plan_start_global_index, it,
                    [](const autoware_msgs::Waypoint& wp) {
                      return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
@@ -275,6 +283,11 @@ bool AstarAvoid::planAvoidWaypoints()
   {
     return false;
   }
+  if (plan_start_global_index < 0 || plan_start_global_index >= static_cast<int>(global_waypoints_.waypoints.size()))
+  {
+    return false;
+  }
+
   // update goal pose incrementally and execute A* search
   for (int i = search_waypoints_delta_; i < static_cast<int>(search_waypoints_size_); i += search_waypoints_delta_)
   {
@@ -287,8 +300,7 @@ bool AstarAvoid::planAvoidWaypoints()
     {
       break;
     }
-
-    auto it2 = obstacle_global_index + stopline_ahead_num_ + 1 > global_waypoints_.waypoints.size() ?
+    auto it2 = obstacle_global_index + stopline_ahead_num_ + 1 > static_cast<int>(global_waypoints_.waypoints.size()) ?
                    global_waypoints_.waypoints.end() :
                    global_waypoints_.waypoints.begin() + obstacle_global_index + stopline_ahead_num_ + 1;
     auto result = std::find_if(global_waypoints_.waypoints.begin() + obstacle_global_index - search_waypoints_delta_,
