@@ -461,7 +461,7 @@ tf::Transform AstarAvoid::getTransform(const std::string& from, const std::strin
   {
     tf_listener_.lookupTransform(from, to, ros::Time(0), stf);
   }
-  catch (tf::TransformException ex)
+  catch (const tf::TransformException& ex)
   {
     ROS_ERROR("%s", ex.what());
   }
