@@ -89,10 +89,11 @@ private:
   double accel_limit_;  // acceleration limit [m/s^2]
   double decel_limit_;  // deceleration limit [m/s^2]
   double vel_min_;      // minimum velocity [km/h]
+  int max_planning_retry_;
 
   // classes
   AstarSearch astar_;
-  AsterPlanStatus astar_plan_status_;
+  AsterPlanStatus astar_plan_status_ = AsterPlanStatus::IDLE;
 
   // variables
   bool found_avoid_path_;
@@ -100,8 +101,8 @@ private:
   // Index of the closest waypoint in the current_waypoints_ Lane.
   // Not the same as the waypoint gid. This value can change suddenly if the
   // current_waypoints_ switches between global_waypoints_ and avoid_merged_waypoints_.
-  WayType select_way_;
-  bool is_move_;
+  WayType select_way_ = WayType::RELAY;
+  bool is_move_ = false;
   int closest_global_index_ = -1;
   int avoid_current_merged_index_ = -1;
   int avoid_start_global_index_ = -1;
@@ -109,6 +110,7 @@ private:
   int current_global_index_ = -1;
   int avoid_goal_global_index_ = -1;
   ros::WallTime start_avoid_time_;
+  int planning_retry_count_ = 0;
 
   // Index of the obstacle relative to current_waypoint_index_.
   int obstacle_local_index_ = -1;

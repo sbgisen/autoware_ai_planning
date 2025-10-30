@@ -32,6 +32,7 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<double>("decel_limit", decel_limit_, 0.1);
   private_nh_.param<double>("accel_limit", accel_limit_, 0.5);
   private_nh_.param<double>("vel_min", vel_min_, 0.72);
+  private_nh_.param<int>("max_planning_retry", max_planning_retry_, 10);
 
   safety_waypoints_pub_ = nh_.advertise<autoware_msgs::Lane>("safety_waypoints", 1, true);
   debug_pub_ = nh_.advertise<nav_msgs::Path>("debug", 1, true);
@@ -185,16 +186,22 @@ void AstarAvoid::runAstarAvoidTransition()
       select_way_ = AstarAvoid::WayType::AVOID;
       is_move_ = true;
       obstacle_local_index_ = -1;
+      planning_retry_count_ = 0;
       avoid_current_merged_index_ =
           updateCurrentIndex(avoid_merged_waypoints_, current_pose_global_.pose, avoid_current_merged_index_);
     }
     else
     {
-      ROS_INFO("Plan -> Relay, Cannot find path");
-      astar_plan_status_ = AstarAvoid::AsterPlanStatus::FAILURE;
-      select_way_ = AstarAvoid::WayType::RELAY;
-      is_move_ = false;
-      avoid_current_merged_index_ = -1;
+      planning_retry_count_ += 1;
+      if (planning_retry_count_ >= max_planning_retry_)
+      {
+        ROS_INFO("Plan -> Relay, Cannot find path");
+        astar_plan_status_ = AstarAvoid::AsterPlanStatus::FAILURE;
+        select_way_ = AstarAvoid::WayType::RELAY;
+        is_move_ = false;
+        avoid_current_merged_index_ = -1;
+        planning_retry_count_ = 0;
+      }
     }
     start_avoid_time_ = ros::WallTime::now();
   }
