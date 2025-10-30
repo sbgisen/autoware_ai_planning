@@ -85,10 +85,11 @@ private:
   double replan_interval_;           // replan interval for avoidance planning [Hz]
   int search_waypoints_size_;        // range of waypoints for incremental search [-]
   int search_waypoints_delta_;       // skipped waypoints for incremental search [-]
-  int stopline_ahead_num_;
-  double accel_limit_;  // acceleration limit [m/s^2]
-  double decel_limit_;  // deceleration limit [m/s^2]
-  double vel_min_;      // minimum velocity [km/h]
+  bool prohibit_stopline_;           // prohibit avoidance if stopline is ahead
+  int stopline_ahead_num_;           // number of stoplines ahead to check when prohibiting avoidance [-]
+  double accel_limit_;               // acceleration limit [m/s^2]
+  double decel_limit_;               // deceleration limit [m/s^2]
+  double vel_min_;                   // minimum velocity [km/h]
   int max_planning_retry_;
 
   // classes

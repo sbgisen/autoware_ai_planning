@@ -28,6 +28,7 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   private_nh_.param<double>("replan_interval", replan_interval_, 2.0);
   private_nh_.param<int>("search_waypoints_size", search_waypoints_size_, 50);
   private_nh_.param<int>("search_waypoints_delta", search_waypoints_delta_, 2);
+  private_nh_.param<bool>("prohibit_stopline", prohibit_stopline_, true);
   private_nh_.param<int>("stopline_ahead_num", stopline_ahead_num_, 1);
   private_nh_.param<double>("decel_limit", decel_limit_, 0.1);
   private_nh_.param<double>("accel_limit", accel_limit_, 0.5);
@@ -284,12 +285,15 @@ bool AstarAvoid::planAvoidWaypoints()
                 global_waypoints_.waypoints.end() :
                 global_waypoints_.waypoints.begin() + plan_start_global_index + obstacle_local_index_ +
                     stopline_ahead_num_ + 1;
-  if (std::find_if(global_waypoints_.waypoints.begin() + plan_start_global_index, it,
-                   [](const autoware_msgs::Waypoint& wp) {
-                     return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
-                   }) != it)
+  if (prohibit_stopline_)
   {
-    return false;
+    if (std::find_if(global_waypoints_.waypoints.begin() + plan_start_global_index, it,
+                     [](const autoware_msgs::Waypoint& wp) {
+                       return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
+                     }) != it)
+    {
+      return false;
+    }
   }
   if (plan_start_global_index < 0 || plan_start_global_index >= static_cast<int>(global_waypoints_.waypoints.size()))
   {
@@ -311,16 +315,21 @@ bool AstarAvoid::planAvoidWaypoints()
     {
       break;
     }
-    auto it2 = obstacle_global_index + stopline_ahead_num_ + 1 > static_cast<int>(global_waypoints_.waypoints.size()) ?
-                   global_waypoints_.waypoints.end() :
-                   global_waypoints_.waypoints.begin() + obstacle_global_index + stopline_ahead_num_ + 1;
-    auto result = std::find_if(global_waypoints_.waypoints.begin() + obstacle_global_index - search_waypoints_delta_,
-                               it2, [](const autoware_msgs::Waypoint& wp) {
-                                 return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
-                               });
-    if (result != it2)
+
+    if (prohibit_stopline_)
     {
-      break;
+      auto it2 =
+          obstacle_global_index + stopline_ahead_num_ + 1 > static_cast<int>(global_waypoints_.waypoints.size()) ?
+              global_waypoints_.waypoints.end() :
+              global_waypoints_.waypoints.begin() + obstacle_global_index + stopline_ahead_num_ + 1;
+      auto result = std::find_if(global_waypoints_.waypoints.begin() + obstacle_global_index - search_waypoints_delta_,
+                                 it2, [](const autoware_msgs::Waypoint& wp) {
+                                   return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
+                                 });
+      if (result != it2)
+      {
+        break;
+      }
     }
 
     // update goal pose
