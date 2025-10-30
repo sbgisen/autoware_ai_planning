@@ -250,6 +250,14 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
     virtual_target_pose_global.position.x += remaining_distance * direction.x();
     virtual_target_pose_global.position.y += remaining_distance * direction.y();
   }
+  else if (getPlaneDistance(target_pose_global.position, current_pose_.position) > lookahead_distance_)
+  {
+    double scale = lookahead_distance_ / getPlaneDistance(target_pose_global.position, current_pose_.position);
+    virtual_target_pose_global.position.x =
+        current_pose_.position.x + (target_pose_global.position.x - current_pose_.position.x) * scale;
+    virtual_target_pose_global.position.y =
+        current_pose_.position.y + (target_pose_global.position.y - current_pose_.position.y) * scale;
+  }
 
   // Calculate curvature to the target point
   output_kappa = calcCurvature(virtual_target_pose_global.position);
