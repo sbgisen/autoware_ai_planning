@@ -160,7 +160,9 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
 
   if (current_waypoint_index_ < 0 || current_waypoint_index_ > path_size - 1)
   {
-    // Current waypoint index is out of range
+    ROS_WARN("Current waypoint index is out of range");
+    output_kappa = 1.0 / RADIUS_MAX_;
+    output_velocity = 0;
     return false;
   }
   else if (current_waypoint_index_ == path_size - 1)
@@ -176,66 +178,92 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   {
     // Target waypoint index is out of range
     ROS_WARN("Target waypoint index is out of range");
+    output_kappa = 1.0 / RADIUS_MAX_;
+    output_velocity = 0;
     return false;
   }
 
   // Check target velocity
   output_velocity = getCurrentCommandVelocity(current_lane, current_waypoint_index_, current_pose_);
-  geometry_msgs::Pose next_target_relative_pose =
-      getRelativePose(current_pose_, current_waypoints_.at(target_waypoint_index_).pose.pose);
+  geometry_msgs::Pose target_pose_global = current_waypoints_.at(target_waypoint_index_).pose.pose;
+  geometry_msgs::Pose target_pose_local = getRelativePose(current_pose_, target_pose_global);
+  double target_yaw_local = tf::getYaw(target_pose_local.orientation);
 
   // Recovery mode
-  if (next_target_relative_pose.position.x * output_velocity < 0)
+  if (target_pose_local.position.x * output_velocity < 0 &&
+      fabs(output_velocity) > std::numeric_limits<double>::epsilon())
   {
-    if (output_velocity > std::numeric_limits<double>::epsilon())
-    {
+    if (output_velocity > 0)
       output_velocity = std::min(output_velocity, RECOVERY_VEL_);
-    }
     else
-    {
       output_velocity = std::max(output_velocity, -RECOVERY_VEL_);
-    }
 
-    if (next_target_relative_pose.position.y < 0)
-    {
-      output_kappa = -1.0 / RADIUS_MIN_;
-    }
-    else
-    {
+    if (target_pose_local.position.y > 0)
       output_kappa = 1.0 / RADIUS_MIN_;
-    }
+    else
+      output_kappa = -1.0 / RADIUS_MIN_;
     return true;
   }
-  // Verify if curvature can be calculated based on lookahead distance
-  next_target_position_ = current_waypoints_.at(target_waypoint_index_).pose.pose.position;
-  if (getPlaneDistance(next_target_position_, current_pose_.position) < minimum_lookahead_distance_)
+  else if (fabs(target_yaw_local) > M_PI * 0.75 && fabs(output_velocity) > std::numeric_limits<double>::epsilon())
   {
-    // No valid points beyond lookahead distance -> Creating virtual target
-    double additional_distance =
-        minimum_lookahead_distance_ -
-        std::max(minimum_lookahead_distance_, getPlaneDistance(next_target_position_, current_pose_.position));
+    if (output_velocity > 0)
+      output_velocity = std::min(output_velocity, RECOVERY_VEL_);
+    else
+      output_velocity = std::max(output_velocity, -RECOVERY_VEL_);
+
+    if (target_yaw_local > 0)
+      output_kappa = 1.0 / RADIUS_MIN_;
+    else
+      output_kappa = -1.0 / RADIUS_MIN_;
+    return true;
+  }
+
+  // No valid points beyond lookahead distance -> Creating virtual target
+  geometry_msgs::Pose virtual_target_pose_global = target_pose_global;
+  if (getPlaneDistance(target_pose_global.position, current_pose_.position) < minimum_lookahead_distance_)
+  {
+    double target_vel_sign = 0;
+    if (target_waypoint_index_ > 0)
+    {
+      geometry_msgs::Pose prev_target_pose_global = current_lane.waypoints.at(target_waypoint_index_ - 1).pose.pose;
+      geometry_msgs::Pose target_pose_from_prev = getRelativePose(prev_target_pose_global, target_pose_global);
+      target_vel_sign = target_pose_from_prev.position.x > 0 ? 1.0 : -1.0;
+    }
+    else if (target_waypoint_index_ < path_size - 1)
+    {
+      geometry_msgs::Pose next_target_pose_global = current_lane.waypoints.at(target_waypoint_index_ + 1).pose.pose;
+      geometry_msgs::Pose next_target_pose_local = getRelativePose(target_pose_global, next_target_pose_global);
+      target_vel_sign = next_target_pose_local.position.x > 0 ? 1.0 : -1.0;
+    }
+    else
+    {
+      target_vel_sign = target_pose_local.position.x > 0 ? 1.0 : -1.0;
+    }
+    double remaining_distance = minimum_lookahead_distance_ -
+                                std::max(minimum_lookahead_distance_,
+                                         getPlaneDistance(virtual_target_pose_global.position, current_pose_.position));
     // Create a virtual target based on the current target
     // Get normalized direction vector
-    geometry_msgs::Pose target_pose = current_waypoints_.at(target_waypoint_index_).pose.pose;
-    geometry_msgs::Pose relative_target_pose = getRelativePose(current_pose_, target_pose);
-    double vel_sign = relative_target_pose.position.x > 0 ? 1.0 : -1.0;
-    double yaw = getYawFromPath(current_lane, target_waypoint_index_);
-    double relative_target_yaw = tf::getYaw(relative_target_pose.orientation);
-    if (fabs(relative_target_yaw) > M_PI * 0.5)
-    {
-      vel_sign *= -1.0;
-    }
-    tf::Vector3 direction = tf::Vector3(vel_sign * cos(yaw), vel_sign * sin(yaw), 0.0);
-    next_target_position_.x += additional_distance * direction.x();
-    next_target_position_.y += additional_distance * direction.y();
+    double target_yaw_global = getYawFromPath(current_lane, target_waypoint_index_);
+    tf::Vector3 direction =
+        tf::Vector3(target_vel_sign * cos(target_yaw_global), target_vel_sign * sin(target_yaw_global), 0.0);
+    virtual_target_pose_global.position.x += remaining_distance * direction.x();
+    virtual_target_pose_global.position.y += remaining_distance * direction.y();
   }
-  output_kappa = calcCurvature(next_target_position_);
 
+  // Calculate curvature to the target point
+  output_kappa = calcCurvature(virtual_target_pose_global.position);
+
+  // Verify if curvature can be calculated based on lookahead distance
   if (target_waypoint_index_ == 0 || target_waypoint_index_ == path_size - 1 ||
       target_waypoint_index_ == current_waypoint_index_)
   {
+    output_kappa = 1.0 / RADIUS_MAX_;
+    output_velocity = 0;
     return false;
   }
+  // Set next target for visualization
+  next_target_position_ = virtual_target_pose_global.position;
   // Return true if the curvature can be calculated
   return true;
 }

@@ -114,7 +114,6 @@ private:
   geometry_msgs::Pose current_pose_{};
   geometry_msgs::Point next_target_position_{};
   std::vector<autoware_msgs::Waypoint> current_waypoints_{};
-  int recovery_rotate_direction_{ 0 };
 
   // functions
   double calcCurvature(const geometry_msgs::Point& target) const;
