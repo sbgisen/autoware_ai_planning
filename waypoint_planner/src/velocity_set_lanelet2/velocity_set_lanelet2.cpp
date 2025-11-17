@@ -102,7 +102,7 @@ void displayObstacle(const EControl& kind, const ObstaclePoints& obstacle_points
   {
     marker.pose.position = prev_obstacle_point;
   }
-  geometry_msgs::Quaternion quat;
+  geometry_msgs::Quaternion quat = tf::createQuaternionMsgFromYaw(0.0);
   marker.pose.orientation = quat;
 
   marker.scale.x = 1.0;
@@ -1021,27 +1021,43 @@ EControl obstacleDetection(const VelocitySetInfo vs_info, int closest_waypoint, 
   static EControl prev_detection = EControl::KEEP;
   static int prev_obstacle_waypoint = -1;
 
-  // stop or decelerate because we found obstacles
-  if (detection_result == EControl::STOP || detection_result == EControl::STOPLINE ||
-      detection_result == EControl::DECELERATE)
+  if (detection_result == EControl::STOP || detection_result == EControl::STOPLINE)
   {
+    // stop because we found obstacles
     displayObstacle(detection_result, obstacle_points, obstacle_pub);
     prev_detection = detection_result;
     false_count = 0;
     prev_obstacle_waypoint = *obstacle_waypoint;
     return detection_result;
   }
-
-  // there are no obstacles, but wait a little for safety
-  if (prev_detection == EControl::STOP || prev_detection == EControl::STOPLINE ||
-      prev_detection == EControl::DECELERATE)
+  else if (prev_detection == EControl::STOP || prev_detection == EControl::STOPLINE)
   {
+    // there are no obstacles, but wait a little for safety
     false_count++;
-
-    if (false_count < LOOP_RATE / 2)
+    if (false_count < 5)
     {
       *obstacle_waypoint = prev_obstacle_waypoint;
-      displayObstacle(EControl::OTHERS, obstacle_points, obstacle_pub);
+      displayObstacle(prev_detection, obstacle_points, obstacle_pub);
+      return prev_detection;
+    }
+  }
+  else if (detection_result == EControl::DECELERATE)
+  {
+    // decelerate because we found obstacles
+    displayObstacle(detection_result, obstacle_points, obstacle_pub);
+    prev_detection = detection_result;
+    false_count = 0;
+    prev_obstacle_waypoint = *obstacle_waypoint;
+    return detection_result;
+  }
+  else if (prev_detection == EControl::DECELERATE)
+  {
+    // there are no obstacles, but wait a little for safety
+    false_count++;
+    if (false_count < 5)
+    {
+      *obstacle_waypoint = prev_obstacle_waypoint;
+      displayObstacle(prev_detection, obstacle_points, obstacle_pub);
       return prev_detection;
     }
   }
