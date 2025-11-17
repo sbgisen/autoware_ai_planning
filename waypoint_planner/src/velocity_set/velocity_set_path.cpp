@@ -85,8 +85,8 @@ void VelocitySetPath::changeWaypointsForDeceleration(double deceleration, int cl
       continue;
     if (index > obstacle_waypoint)
     {
-      // After obstacle_waypoint, set the speed of extra points to 0.
-      updated_waypoints_.waypoints[index].twist.twist.linear.x = 0;
+      // After obstacle_waypoint, set the speed of extra points to decelerate_vel_min_.
+      updated_waypoints_.waypoints[index].twist.twist.linear.x = decelerate_vel_min_;
       continue;
     }
     // v = sqrt( (v0)^2 + 2ax )
