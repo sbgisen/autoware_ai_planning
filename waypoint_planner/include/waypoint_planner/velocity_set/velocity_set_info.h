@@ -39,6 +39,7 @@ private:
   double detection_height_bottom_;             // from sensor
   double stop_distance_obstacle_;              // (meter) stopping distance from obstacles
   double stop_distance_stopline_;              // (meter) stopping distance from stoplines
+  double deceleration_distance_obstacle_;      // (meter) deceleration distance from obstacles
   double deceleration_obstacle_;               // (m/s^2) deceleration for obstacles
   double deceleration_stopline_;               // (m/s^2) deceleration for stopline
   double velocity_change_limit_;               // (m/s)
@@ -115,6 +116,11 @@ public:
     return stop_distance_stopline_;
   }
 
+  double getDecelerationDistanceObstacle() const
+  {
+    return deceleration_distance_obstacle_;
+  }
+  
   double getDecelerationObstacle() const
   {
     return deceleration_obstacle_;

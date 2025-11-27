@@ -24,6 +24,7 @@ VelocitySetInfo::VelocitySetInfo()
   , detection_height_bottom_(-1.7)
   , stop_distance_obstacle_(10)
   , stop_distance_stopline_(5)
+  , deceleration_distance_obstacle_(10)
   , deceleration_obstacle_(0.8)
   , deceleration_stopline_(0.6)
   , velocity_change_limit_(2.77)
@@ -38,6 +39,7 @@ VelocitySetInfo::VelocitySetInfo()
   private_nh_.param<double>("remove_points_upto", remove_points_upto_, 2.3);
   private_nh_.param<double>("stop_distance_obstacle", stop_distance_obstacle_, 10.0);
   private_nh_.param<double>("stop_distance_stopline", stop_distance_stopline_, 5.0);
+  private_nh_.param<double>("deceleration_distance_obstacle", deceleration_distance_obstacle_, stop_distance_obstacle_);
   private_nh_.param<double>("detection_range", stop_range_, 1.3);
   private_nh_.param<int>("points_threshold", points_threshold_, 10);
   private_nh_.param<double>("detection_height_top", detection_height_top_, 0.2);
