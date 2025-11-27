@@ -37,7 +37,8 @@ class PurePursuit
 public:
   PurePursuit() = default;
   ~PurePursuit() = default;
-
+  int velocitySign(double v);
+  bool isSwitchbackZone(const autoware_msgs::Lane& lane, int index, int half_window);
   // for setting data
   void setLookaheadDistance(const double& ld)
   {

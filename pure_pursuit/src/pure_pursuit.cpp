@@ -19,6 +19,41 @@
 
 namespace waypoint_follower
 {
+int PurePursuit::velocitySign(double v)
+{
+  if (v > 0.0)
+    return 1;
+  if (v < 0.0)
+    return -1;
+  return 0;
+}
+
+// Return true if there is a velocity sign flip (switchback)
+// within [index - half_window, index + half_window].
+bool PurePursuit::isSwitchbackZone(const autoware_msgs::Lane& lane, int index, int half_window)
+{
+  const int size = static_cast<int>(lane.waypoints.size());
+  if (size <= 1)
+    return false;
+
+  const int begin = std::max(1, index - half_window);
+  const int end = std::min(size - 1, index + half_window);
+
+  for (int i = begin; i <= end; ++i)
+  {
+    const double v0 = lane.waypoints.at(i - 1).twist.twist.linear.x;
+    const double v1 = lane.waypoints.at(i).twist.twist.linear.x;
+
+    if (velocitySign(v0) * velocitySign(v1) < 0)
+    {
+      // velocity sign flip detected -> this area is a switchback zone
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // Simple estimation of curvature given two points.
 // 1. Convert the target point from map frame into the current pose frame,
 //    so it has a local coorinates of (pt.x, pt.y, pt.z).
@@ -189,8 +224,67 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   geometry_msgs::Pose target_pose_local = getRelativePose(current_pose_, target_pose_global);
   double target_yaw_local = tf::getYaw(target_pose_local.orientation);
 
+  // Detect if the current index is in a switchback zone
+  // (switchback point and its immediate neighbors).
+  const bool is_switchback_zone = isSwitchbackZone(current_lane, current_waypoint_index_, 1);
+  // Decide whether recovery is allowed for this step.
+  // In a switchback zone we first search for a "normal" candidate target
+  // (one that does not satisfy the recovery conditions). If at least one
+  // exists, we use it as target and DO NOT enter recovery. Only when all
+  // candidates are abnormal, recovery is allowed.
+  bool allow_recovery = true;
+
+  if (is_switchback_zone)
+  {
+    const double eps_v = std::numeric_limits<double>::epsilon();
+
+    // Candidate indices around the current index (switchback近傍)
+    std::vector<int> candidate_indices;
+    const int begin = std::max(0, current_waypoint_index_ - 1);
+    const int end = std::min(path_size - 1, current_waypoint_index_ + 1);
+    for (int i = begin; i <= end; ++i)
+    {
+      candidate_indices.push_back(i);
+    }
+
+    bool found_normal_target = false;
+    geometry_msgs::Pose normal_target_global;
+
+    for (int idx : candidate_indices)
+    {
+      const geometry_msgs::Pose cand_pose_global = current_waypoints_.at(idx).pose.pose;
+      const geometry_msgs::Pose cand_pose_local = getRelativePose(current_pose_, cand_pose_global);
+      const double cand_yaw_local = tf::getYaw(cand_pose_local.orientation);
+
+      const bool cond_reverse_dir =
+          (cand_pose_local.position.x * output_velocity < 0.0) && (std::fabs(output_velocity) > eps_v);
+      const bool cond_large_yaw = (std::fabs(cand_yaw_local) > M_PI * 0.75) && (std::fabs(output_velocity) > eps_v);
+
+      // "Normal" if it does NOT trigger any recovery condition
+      if (!cond_reverse_dir && !cond_large_yaw)
+      {
+        found_normal_target = true;
+        normal_target_global = cand_pose_global;
+        break;
+      }
+    }
+    if (found_normal_target)
+    {
+      // Use this normal target and disable recovery for this step.
+      allow_recovery = false;
+      target_pose_global = normal_target_global;
+      target_pose_local = getRelativePose(current_pose_, target_pose_global);
+      target_yaw_local = tf::getYaw(target_pose_local.orientation);
+    }
+    else
+    {
+      // All candidates are abnormal -> allow recovery as a fallback.
+      allow_recovery = true;
+    }
+  }
+
   // Recovery mode
-  if (target_pose_local.position.x * output_velocity < 0 &&
+  if (allow_recovery && target_pose_local.position.x * output_velocity < 0 &&
       fabs(output_velocity) > std::numeric_limits<double>::epsilon())
   {
     if (output_velocity > 0)
@@ -204,7 +298,9 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
       output_kappa = -1.0 / RADIUS_MIN_;
     return true;
   }
-  else if (fabs(target_yaw_local) > M_PI * 0.75 && fabs(output_velocity) > std::numeric_limits<double>::epsilon())
+  else if (allow_recovery && fabs(target_yaw_local) > M_PI * 0.75 &&
+           fabs(output_velocity) > std::numeric_limits<double>::epsilon())
+
   {
     if (output_velocity > 0)
       output_velocity = std::min(output_velocity, RECOVERY_VEL_);
