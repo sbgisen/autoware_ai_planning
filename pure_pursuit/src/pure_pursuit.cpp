@@ -239,16 +239,22 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
     {
       target_vel_sign = target_pose_local.position.x > 0 ? 1.0 : -1.0;
     }
-    double remaining_distance = minimum_lookahead_distance_ -
-                                std::max(minimum_lookahead_distance_,
-                                         getPlaneDistance(virtual_target_pose_global.position, current_pose_.position));
-    // Create a virtual target based on the current target
-    // Get normalized direction vector
-    double target_yaw_global = getYawFromPath(current_lane, target_waypoint_index_);
-    tf::Vector3 direction =
-        tf::Vector3(target_vel_sign * cos(target_yaw_global), target_vel_sign * sin(target_yaw_global), 0.0);
-    virtual_target_pose_global.position.x += remaining_distance * direction.x();
-    virtual_target_pose_global.position.y += remaining_distance * direction.y();
+
+    // Move the virtual target along the path direction so that
+    // the distance from the current pose becomes minimum_lookahead_distance_.
+    const double current_dist = getPlaneDistance(virtual_target_pose_global.position, current_pose_.position);
+    double remaining_distance = minimum_lookahead_distance_ - current_dist;
+
+    if (remaining_distance > 0.0)
+    {
+      // Create a virtual target based on the current target
+      // Get normalized direction vector
+      double target_yaw_global = getYawFromPath(current_lane, target_waypoint_index_);
+      tf::Vector3 direction =
+          tf::Vector3(target_vel_sign * cos(target_yaw_global), target_vel_sign * sin(target_yaw_global), 0.0);
+      virtual_target_pose_global.position.x += remaining_distance * direction.x();
+      virtual_target_pose_global.position.y += remaining_distance * direction.y();
+    }
   }
   else if (getPlaneDistance(target_pose_global.position, current_pose_.position) > lookahead_distance_)
   {
