@@ -103,30 +103,89 @@ void VelocitySetPath::changeWaypointsForDeceleration(double deceleration, int cl
   }
 }
 
-void VelocitySetPath::avoidSuddenAcceleration(double deceleration, int closest_waypoint)
+void VelocitySetPath::avoidSuddenAcceleration(double accel_limit, int closest_waypoint)
 {
-  for (int i = 0;; i++)
+  constexpr double eps = 1e-9;
+  if (closest_waypoint < 0)
+    return;
+  if (!checkWaypoint(closest_waypoint))
+    return;
+
+  const int N = getNewWaypointsSize();
+  if (N <= 0)
+    return;
+
+  const double a_lim = std::max(0.0, accel_limit);  // cap >= 0
+  const double v_curr = current_vel_;
+  const int sign_now = (v_curr > 0.0) ? 1 : (v_curr < 0.0 ? -1 : 0);
+
+  auto sgn = [](double x) -> int { return (x > 0.0) ? 1 : (x < 0.0 ? -1 : 0); };
+  auto v_orig = [&](int i) -> double { return original_waypoints_.waypoints[i].twist.twist.linear.x; };
+  auto v_ref = [&](int i) -> double& { return updated_waypoints_.waypoints[i].twist.twist.linear.x; };
+
+  // ---- Step 0: cap the closest waypoint (forward-local approximation) ----
   {
-    if (!checkWaypoint(closest_waypoint + i))
-      return;
+    const double vo = v_orig(closest_waypoint);
+    const int sgn_o = sgn(vo);
+    double& v_upd = v_ref(closest_waypoint);
 
-    // accelerate with constant acceleration
-    // v = root((v0)^2 + 2ax)
-    // Without velocity_offset_ term, changed_vel becomes current_vel_ when i == 0. For example, the car will not move
-    // if current_vel_ == 0.
-    std::array<int, 2> range = { closest_waypoint, closest_waypoint + i };
-    double changed_vel = calcChangedVelocity(current_vel_, deceleration, range) + velocity_offset_;
+    // treat (current->closest) distance as (closest->closest+1)
+    double s0 = 0.0;
+    if (closest_waypoint + 1 < N)
+      s0 = calcInterval(closest_waypoint, closest_waypoint + 1);
 
-    const double target_vel = updated_waypoints_.waypoints[closest_waypoint + i].twist.twist.linear.x;
-    // Don't exceed original velocity
-    if (changed_vel > std::abs(target_vel))
-      return;
+    const double reach0 = (s0 > eps) ?
+                              std::sqrt(std::max(0.0, std::abs(v_curr) * std::abs(v_curr) + 2.0 * a_lim * s0)) :
+                              std::abs(v_curr);
 
-    const int sgn = (target_vel < 0) ? -1 : 1;
-    updated_waypoints_.waypoints[closest_waypoint + i].twist.twist.linear.x = sgn * changed_vel;
+    const double orig_cap0 = std::abs(vo);
+    const double cur_mag0 = std::abs(v_upd);
+
+    const double new_mag0 = std::min({ cur_mag0, orig_cap0, reach0 });  // lower-only
+    v_upd = (sgn_o == 0) ? 0.0 : sgn_o * new_mag0;
   }
 
-  return;
+  // ---- Step 1: forward pass (closest -> end), cap per-segment acceleration (lower-only) ----
+  double prev_mag = std::abs(v_ref(closest_waypoint));  // bounded |v_closest| used for next segment
+
+  for (int i = closest_waypoint + 1; i < N; ++i)
+  {
+    if (!checkWaypoint(i) || !checkWaypoint(i - 1))
+      return;
+
+    const double vo = v_orig(i);
+    const int sgn_o = sgn(vo);
+
+    // stop at direction boundary based on ORIGINAL sign
+    if (sgn_o == 0)
+      break;
+    if (sign_now != 0 && sgn_o != sign_now)
+      break;
+
+    const double ds = calcInterval(i - 1, i);
+    if (ds <= eps)
+    {  // degenerate segment: still clamp to original (lower-only)
+      double& v_upd = v_ref(i);
+      const double mag = std::abs(v_upd);
+      const double cap = std::abs(vo);
+      const double new_mag = std::min(mag, cap);
+      v_upd = sgn_o * new_mag;
+      // prev_mag unchanged
+      continue;
+    }
+
+    // reachable upper bound from previous bounded magnitude
+    const double reach = std::sqrt(std::max(0.0, prev_mag * prev_mag + 2.0 * a_lim * ds));
+    const double orig_cap = std::abs(vo);
+
+    double& v_upd = v_ref(i);
+    const double mag = std::abs(v_upd);
+
+    const double new_mag = std::min({ mag, orig_cap, reach });  // lower-only
+    v_upd = sgn_o * new_mag;
+
+    prev_mag = new_mag;  // propagate bounded magnitude forward
+  }
 }
 
 /**
