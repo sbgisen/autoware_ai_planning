@@ -1089,7 +1089,8 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
   else if (detection_result == EControl::DECELERATE)  // DECELERATE for obstacles
   {
     vs_path->initializeNewWaypoints();
-    vs_path->changeWaypointsForDeceleration(vs_info.getDecelerationObstacle(), closest_waypoint, obstacle_waypoint);
+    vs_path->changeWaypointsForDeceleration(obstacle_waypoint, obstacle_waypoint, closest_waypoint,
+                                            vs_info.getDecelerationObstacle());
   }
   else
   {  // ACCELERATE or KEEP

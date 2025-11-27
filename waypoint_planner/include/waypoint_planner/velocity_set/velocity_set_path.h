@@ -43,7 +43,8 @@ public:
   void changeWaypointsForStopping(int stop_first_index, int closest_waypoint, double deceleration);
   void avoidSuddenDeceleration(double velocity_change_limit, double deceleration, int closest_waypoint);
   void avoidSuddenAcceleration(double accel_limit, int closest_waypoint);
-  void changeWaypointsForDeceleration(double deceleration, int closest_waypoint, int obstacle_waypoint);
+  void changeWaypointsForDeceleration(int decel_first_index, int decel_last_index, int closest_waypoint,
+                                      double deceleration);
   void setTemporalWaypoints(int temporal_waypoints_size, int closest_waypoint, geometry_msgs::PoseStamped control_pose);
   void initializeNewWaypoints();
   void resetFlag();

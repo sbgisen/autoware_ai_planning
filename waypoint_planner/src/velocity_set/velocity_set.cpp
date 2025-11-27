@@ -519,7 +519,7 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
     deceleration = vs_info.getDecelerationObstacle();
     if (detection_result == EControl::DECELERATE)
     {
-      vs_path->changeWaypointsForDeceleration(deceleration, closest_waypoint, obstacle_waypoint);
+      vs_path->changeWaypointsForDeceleration(obstacle_waypoint, obstacle_waypoint, closest_waypoint, deceleration);
     }
   }
   vs_path->avoidSuddenAcceleration(deceleration, closest_waypoint);

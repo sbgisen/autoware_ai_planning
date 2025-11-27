@@ -76,25 +76,26 @@ double VelocitySetPath::calcChangedVelocity(const double& current_vel, const dou
   return std::sqrt(square_vel + 2.0 * accel * calcInterval(range.at(0), range.at(1)));
 }
 
-void VelocitySetPath::changeWaypointsForDeceleration(double deceleration, int closest_waypoint, int obstacle_waypoint)
+void VelocitySetPath::changeWaypointsForDeceleration(int decel_first_index, int decel_last_index, int closest_waypoint,
+                                                     double deceleration)
 {
   int extra = 4;  // for safety
 
   // decelerate with constant deceleration
-  for (int index = obstacle_waypoint + extra; index >= closest_waypoint; index--)
+  for (int index = decel_last_index + extra; index >= closest_waypoint; index--)
   {
     if (!checkWaypoint(index))
       continue;
-    if (index > obstacle_waypoint)
+    if (index > decel_first_index)
     {
-      // After obstacle_waypoint, set the speed of extra points to decelerate_vel_min_.
+      // After decel_last_index, set the speed of extra points to decelerate_vel_min_.
       updated_waypoints_.waypoints[index].twist.twist.linear.x = decelerate_vel_min_;
       continue;
     }
     // v = sqrt( (v0)^2 + 2ax )
     // Keep the car at decelerate_vel_min_ when approaching the obstacles.
-    // without decelerate_vel_min_ term, changed_vel becomes zero if index == obstacle_waypoint.
-    std::array<int, 2> range = { index, obstacle_waypoint };
+    // without decelerate_vel_min_ term, changed_vel becomes zero if index == decel_last_index.
+    std::array<int, 2> range = { index, decel_last_index };
     double changed_vel = calcChangedVelocity(decelerate_vel_min_, deceleration, range);
 
     double prev_vel = original_waypoints_.waypoints[index].twist.twist.linear.x;
