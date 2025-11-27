@@ -1075,30 +1075,34 @@ EControl obstacleDetection(const VelocitySetInfo vs_info, int closest_waypoint, 
 void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_result, int closest_waypoint,
                      int obstacle_waypoint, const ros::Publisher& final_waypoints_pub, VelocitySetPath* vs_path)
 {
-  double stop_distance =
-      (detection_result == EControl::STOPLINE) ? vs_info.getStopDistanceStopline() : vs_info.getStopDistanceObstacle();
-  double deceleration =
-      (detection_result == EControl::STOPLINE) ? vs_info.getDecelerationStopline() : vs_info.getDecelerationObstacle();
-  int stop_first_index = calcWaypointIndexReverse(vs_path->getPrevWaypoints(), obstacle_waypoint, stop_distance);
+  double deceleration = vs_info.getVelocityChangeLimit();
 
   if (detection_result == EControl::STOP || detection_result == EControl::STOPLINE)  // STOP for obstacle/stopline
   {  // stop_waypoint is about stop_distance meter away from obstacles/stoplines
     // change waypoints to stop by the stop_waypoint
+    deceleration = (detection_result == EControl::STOPLINE) ? vs_info.getDecelerationStopline() :
+                                                              vs_info.getDecelerationObstacle();
+    double stop_distance = (detection_result == EControl::STOPLINE) ? vs_info.getStopDistanceStopline() :
+                                                                      vs_info.getStopDistanceObstacle();
+    int stop_first_index = calcWaypointIndexReverse(vs_path->getPrevWaypoints(), obstacle_waypoint, stop_distance);
     vs_path->changeWaypointsForStopping(stop_first_index, closest_waypoint, deceleration);
   }
   else if (detection_result == EControl::DECELERATE)  // DECELERATE for obstacles
   {
     vs_path->initializeNewWaypoints();
-    vs_path->changeWaypointsForDeceleration(obstacle_waypoint, obstacle_waypoint, closest_waypoint,
+    deceleration = vs_info.getDecelerationObstacle();
+    double decel_distance = vs_info.getDecelerationDistanceObstacle();
+    int decel_first_index = calcWaypointIndexReverse(vs_path->getPrevWaypoints(), obstacle_waypoint, decel_distance);
+    vs_path->changeWaypointsForDeceleration(decel_first_index, obstacle_waypoint, closest_waypoint,
                                             vs_info.getDecelerationObstacle());
   }
   else
-  {  // ACCELERATE or KEEP
+  {  // KEEP
     vs_path->initializeNewWaypoints();
   }
 
-  vs_path->avoidSuddenAcceleration(deceleration, closest_waypoint);
   vs_path->avoidSuddenDeceleration(vs_info.getVelocityChangeLimit(), deceleration, closest_waypoint);
+  vs_path->avoidSuddenAcceleration(deceleration, closest_waypoint);
   vs_path->setTemporalWaypoints(vs_info.getTemporalWaypointsSize(), closest_waypoint, vs_info.getControlPose());
   final_waypoints_pub.publish(vs_path->getTemporalWaypoints());
 }
