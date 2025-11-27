@@ -505,7 +505,7 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
   {
     // STOP for obstacle/stopline
     // stop_waypoint is about stop_distance meter away from obstacles/stoplines
-    int stop_distance =
+    double stop_distance =
         (detection_result == EControl::STOP) ? vs_info.getStopDistanceObstacle() : vs_info.getStopDistanceStopline();
     deceleration =
         (detection_result == EControl::STOP) ? vs_info.getDecelerationObstacle() : vs_info.getDecelerationStopline();
