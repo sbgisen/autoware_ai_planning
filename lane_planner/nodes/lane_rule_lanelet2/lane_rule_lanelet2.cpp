@@ -461,6 +461,146 @@ autoware_msgs::Lane apply_stop_and_slowdown(const autoware_msgs::Lane& lane,
   return output_lane;
 }
 
+autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const std::vector<size_t>& stopline_indexes,
+                                        double acceleration, double deceleration, size_t stop_after_cnt,
+                                        size_t stop_before_cnt, size_t slow_before_cnt, double slowdown_scale)
+{
+  autoware_msgs::Lane output_lane = lane;
+  const int N = static_cast<int>(output_lane.waypoints.size());
+  if (N <= 0)
+    return output_lane;
+
+  const double a_acc = std::max(0.0, acceleration);
+  const double a_dec = std::max(0.0, deceleration);
+  if (a_dec <= 0.0)
+    return output_lane;
+
+  // store original velocities to respect upper limits
+  std::vector<double> orig_vel(N, 0.0);
+  for (int k = 0; k < N; ++k)
+  {
+    orig_vel[k] = lane.waypoints[k].twist.twist.linear.x;
+  }
+
+  for (const size_t idx : stopline_indexes)
+  {
+    const int i = static_cast<int>(idx);
+    if (i < 0 || i >= N)
+      continue;
+
+    // ------------------------------------------------
+    // 1. index calculation (clamped)
+    // ------------------------------------------------
+    // "zero" block も低速区間として利用
+    const int zero_start_idx = std::max(0, i - static_cast<int>(stop_before_cnt));
+    const int zero_end_idx = std::min(N - 1, i + static_cast<int>(stop_after_cnt));
+
+    // slowdown start index (low speed zone begins further upstream)
+    int slow_start_idx = i - static_cast<int>(slow_before_cnt);
+    if (slow_start_idx < 0)
+      slow_start_idx = 0;
+
+    // low-speed plateau region is [plateau_start_idx, plateau_end_idx]
+    // = union of original slowdown region and "stop" block
+    const int plateau_start_idx = std::min(slow_start_idx, zero_start_idx);
+    const int plateau_end_idx = zero_end_idx;
+
+    if (plateau_start_idx >= N)
+      continue;
+
+    // ------------------------------------------------
+    // 2. decide low speed v_low based on original velocity
+    //    (use velocity at plateau_start_idx × slowdown_scale)
+    // ------------------------------------------------
+    if (!(slowdown_scale > 0.0 && slowdown_scale < 1.0))
+      continue;
+
+    const double v_orig_ref = orig_vel[plateau_start_idx];
+    const int sgn = (v_orig_ref >= 0.0) ? 1 : -1;
+    double v_low = std::fabs(v_orig_ref) * slowdown_scale;
+    if (v_low < 1e-3)
+    {
+      // if reference is too small, try next ones inside plateau
+      for (int j = plateau_start_idx + 1; j <= plateau_end_idx && j < N; ++j)
+      {
+        const double v_tmp = std::fabs(orig_vel[j]);
+        if (v_tmp > v_low)
+          v_low = v_tmp * slowdown_scale;
+      }
+    }
+    if (v_low < 1e-3)
+    {
+      // nothing meaningful to do if original is almost 0
+      continue;
+    }
+
+    const double v_low_sq = v_low * v_low;
+
+    // ------------------------------------------------
+    // 3. low-speed plateau: [plateau_start_idx, plateau_end_idx] = constant v_low
+    // ------------------------------------------------
+    for (int j = plateau_start_idx; j <= plateau_end_idx && j < N; ++j)
+    {
+      const double orig = orig_vel[j];
+      const int s = (orig >= 0.0) ? 1 : -1;
+      output_lane.waypoints[j].twist.twist.linear.x = s * v_low;
+    }
+
+    // ------------------------------------------------
+    // 4. upstream: smooth deceleration into v_low
+    //    v^2 = v_low^2 + 2 * a_dec * d
+    // ------------------------------------------------
+    if (plateau_start_idx - 1 >= 0)
+    {
+      double dist = 0.0;
+      for (int j = plateau_start_idx - 1; j >= 0; --j)
+      {
+        const geometry_msgs::Point& p0 = output_lane.waypoints[j].pose.pose.position;
+        const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
+        dist += hypot(p1.x - p0.x, p1.y - p0.y);
+
+        const double v_allowed = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_dec * dist));
+        const double orig_mag = std::fabs(orig_vel[j]);
+        const double v_mag = std::min(orig_mag, v_allowed);
+        const int s = (orig_vel[j] >= 0.0) ? 1 : -1;
+
+        output_lane.waypoints[j].twist.twist.linear.x = s * v_mag;
+
+        // if original speed already under limit, further upstream likely ok
+        if (orig_mag <= v_allowed)
+          break;
+      }
+    }
+
+    // ------------------------------------------------
+    // 5. downstream: smooth acceleration back from v_low
+    //    v^2 = v_low^2 + 2 * a_acc * d
+    // ------------------------------------------------
+    if (a_acc > 0.0 && plateau_end_idx + 1 < N)
+    {
+      double dist = 0.0;
+      for (int j = plateau_end_idx + 1; j < N; ++j)
+      {
+        const geometry_msgs::Point& p0 = output_lane.waypoints[j - 1].pose.pose.position;
+        const geometry_msgs::Point& p1 = output_lane.waypoints[j].pose.pose.position;
+        dist += hypot(p1.x - p0.x, p1.y - p0.y);
+
+        const double v_allowed = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_acc * dist));
+        const double orig_mag = std::fabs(orig_vel[j]);
+        const double v_mag = std::min(orig_mag, v_allowed);
+        const int s = (orig_vel[j] >= 0.0) ? 1 : -1;
+
+        output_lane.waypoints[j].twist.twist.linear.x = s * v_mag;
+
+        if (orig_mag <= v_allowed)
+          break;
+      }
+    }
+  }
+
+  return output_lane;
+}
+
 // apply deceleration before stopline and acceleration after stopline
 // // same as lane_rule.cpp
 autoware_msgs::Lane apply_stopline_acceleration(const autoware_msgs::Lane& lane,
@@ -566,8 +706,13 @@ void create_waypoint(const autoware_msgs::LaneArray& msg)
     }
 
     traffic_waypoint.lanes.push_back(waypoint_lane);
-    green_waypoint.lanes.push_back(waypoint_lane);
-
+    // green_waypoint.lanes.push_back(waypoint_lane);
+    autoware_msgs::Lane green_waypoint_lane = waypoint_lane;
+    green_waypoint_lane =
+        apply_slowdown_only(waypoint_lane, waypoint_stopline_indexes, g_config_acceleration, g_config_acceleration,
+                            g_config_number_of_zeros_behind, g_config_number_of_zeros_ahead,
+                            g_config_number_of_slowdown, g_config_slowdown_velocity_scale);
+    green_waypoint.lanes.push_back(green_waypoint_lane);
     // apply acceleration to waypoint velocities to consider stoplines
     waypoint_lane =
         apply_stop_and_slowdown(waypoint_lane, waypoint_stopline_indexes, g_config_acceleration, g_config_acceleration,
