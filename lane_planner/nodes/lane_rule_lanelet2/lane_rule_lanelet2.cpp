@@ -54,6 +54,9 @@ static int g_config_number_of_zeros_ahead = 0;
 static int g_config_number_of_zeros_behind = 0;
 static int g_config_number_of_smoothing_count = 0;
 
+static int g_config_number_of_slowdown = 40;           // meter
+static double g_config_slowdown_velocity_scale = 0.5;  // ratio
+
 static std::string g_frame_id = "map";
 
 static ros::Publisher g_traffic_pub;
@@ -273,6 +276,191 @@ autoware_msgs::Lane apply_acceleration(const autoware_msgs::Lane& lane, double a
   return l;
 }
 
+autoware_msgs::Lane apply_stop_and_slowdown(const autoware_msgs::Lane& lane,
+                                            const std::vector<size_t>& stopline_indexes, double acceleration,
+                                            double deceleration, size_t stop_after_cnt, size_t stop_before_cnt,
+                                            size_t slow_before_cnt, double slowdown_scale)
+{
+  autoware_msgs::Lane output_lane = lane;
+  const int N = static_cast<int>(output_lane.waypoints.size());
+  if (N <= 0)
+    return output_lane;
+
+  const double a_acc = std::max(0.0, acceleration);
+  const double a_dec = std::max(0.0, deceleration);
+  if (a_dec <= 0.0)
+    return output_lane;
+
+  for (const size_t idx : stopline_indexes)
+  {
+    const int i = static_cast<int>(idx);
+    if (i < 0 || i >= N)
+      continue;
+
+    // -------------------------------
+    // 1. index 計算（範囲をきっちり clamp）
+    // -------------------------------
+    const int zero_start_idx = std::max(0, i - static_cast<int>(stop_before_cnt));
+    const int zero_end_idx = std::min(N - 1, i + static_cast<int>(stop_after_cnt));
+
+    // slowdown 区間は [slow_start_idx, slow_end_idx]
+    // i - slow_before_cnt .. i - stop_before_cnt - 1
+    int slow_start_idx = i - static_cast<int>(slow_before_cnt);
+    int slow_end_idx = i - static_cast<int>(stop_before_cnt) - 1;
+
+    if (slow_start_idx < 0)
+      slow_start_idx = 0;
+    if (slow_end_idx < slow_start_idx)
+      slow_end_idx = slow_start_idx - 1;  // slowdown 区間なしを表現
+
+    // -------------------------------
+    // 2. 停止ブロック（0[m/s]）をセット
+    // -------------------------------
+    for (int j = zero_start_idx; j <= zero_end_idx; ++j)
+    {
+      output_lane.waypoints[j].twist.twist.linear.x = 0.0;
+    }
+
+    // -------------------------------
+    // 3. 低速区間（一定低速 v_slow）をセット
+    // -------------------------------
+    if (slowdown_scale > 0.0 && slowdown_scale < 1.0 && slow_end_idx >= slow_start_idx)
+    {
+      // 低速の基準速度は「元レーンの slow_start_idx の速度 × slowdown_scale」
+      const double v_orig = lane.waypoints[slow_start_idx].twist.twist.linear.x;
+      const int sgn = (v_orig >= 0.0) ? 1 : -1;
+      const double v_slow = std::fabs(v_orig) * slowdown_scale;
+
+      for (int j = slow_start_idx; j <= slow_end_idx; ++j)
+      {
+        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_slow;
+      }
+
+      // -------------------------------
+      // 4. 「低速→停止」の一定減速（slow_end_idx から zero_start_idx まで）
+      //     v^2 = 2 a_dec * d で 0 に落ちるプロファイル
+      // -------------------------------
+      if (zero_start_idx - 1 >= slow_start_idx + 1)
+      {
+        double dist = 0.0;
+        for (int j = zero_start_idx - 1; j >= slow_start_idx + 1; --j)
+        {
+          const geometry_msgs::Point& p0 = output_lane.waypoints[j].pose.pose.position;
+          const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
+          dist += hypot(p1.x - p0.x, p1.y - p0.y);
+
+          const double v_allowed = std::sqrt(std::max(0.0, 2.0 * a_dec * dist));
+          double& v = output_lane.waypoints[j].twist.twist.linear.x;
+          const double mag = std::fabs(v);
+          const int s = (v >= 0.0) ? 1 : -1;
+
+          if (mag > v_allowed)
+          {
+            v = s * v_allowed;
+          }
+          else
+          {
+            // 既に制限以下なら、それよりさらに手前も大抵満たしているので打ち切り
+            break;
+          }
+        }
+      }
+
+      // -------------------------------
+      // 5. 「巡航→低速」の一定減速（slow_start_idx より手前）
+      //     v^2 = v_slow^2 + 2 a_dec * d
+      // -------------------------------
+      if (slow_start_idx - 1 >= 0)
+      {
+        double dist = 0.0;
+        const double v_slow_sq = v_slow * v_slow;
+
+        for (int j = slow_start_idx - 1; j >= 0; --j)
+        {
+          const geometry_msgs::Point& p0 = output_lane.waypoints[j].pose.pose.position;
+          const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
+          dist += hypot(p1.x - p0.x, p1.y - p0.y);
+
+          const double v_allowed = std::sqrt(std::max(0.0, v_slow_sq + 2.0 * a_dec * dist));
+          double& v = output_lane.waypoints[j].twist.twist.linear.x;
+          const double mag = std::fabs(v);
+          const int s = (v >= 0.0) ? 1 : -1;
+
+          if (mag > v_allowed)
+          {
+            v = s * v_allowed;
+          }
+          else
+          {
+            break;
+          }
+        }
+      }
+    }
+    else
+    {
+      // slowdown_scale 無効 or slowdown 区間無し:
+      // 停止に向けての一定減速だけやる（slow 区間なし）
+      double dist = 0.0;
+      if (zero_start_idx - 1 >= 0)
+      {
+        for (int j = zero_start_idx - 1; j >= 0; --j)
+        {
+          const geometry_msgs::Point& p0 = output_lane.waypoints[j].pose.pose.position;
+          const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
+          dist += hypot(p1.x - p0.x, p1.y - p0.y);
+
+          const double v_allowed = std::sqrt(std::max(0.0, 2.0 * a_dec * dist));
+          double& v = output_lane.waypoints[j].twist.twist.linear.x;
+          const double mag = std::fabs(v);
+          const int s = (v >= 0.0) ? 1 : -1;
+
+          if (mag > v_allowed)
+          {
+            v = s * v_allowed;
+          }
+          else
+          {
+            break;
+          }
+        }
+      }
+    }
+
+    // -------------------------------
+    // 6. 停止後の加速（一定加速度 a_acc）
+    // -------------------------------
+    if (a_acc > 0.0)
+    {
+      double dist = 0.0;
+      double v_prev = 0.0;  // zero_end_idx で 0[m/s]
+
+      for (int j = zero_end_idx + 1; j < N; ++j)
+      {
+        const geometry_msgs::Point& p0 = output_lane.waypoints[j - 1].pose.pose.position;
+        const geometry_msgs::Point& p1 = output_lane.waypoints[j].pose.pose.position;
+        dist += hypot(p1.x - p0.x, p1.y - p0.y);
+
+        const double v_allowed = std::sqrt(v_prev * v_prev + 2.0 * a_acc * dist);
+        double& v = output_lane.waypoints[j].twist.twist.linear.x;
+        const double mag = std::fabs(v);
+
+        // 元の速度制限を超えないように
+        const double v_new = std::min(mag, v_allowed);
+        const int s = (v >= 0.0) ? 1 : -1;
+        v = s * v_new;
+        v_prev = v_new;
+
+        // すでに元の速度の方が低ければそこから先は変更不要
+        if (mag <= v_allowed)
+          break;
+      }
+    }
+  }
+
+  return output_lane;
+}
+
 // apply deceleration before stopline and acceleration after stopline
 // // same as lane_rule.cpp
 autoware_msgs::Lane apply_stopline_acceleration(const autoware_msgs::Lane& lane,
@@ -381,8 +569,10 @@ void create_waypoint(const autoware_msgs::LaneArray& msg)
     green_waypoint.lanes.push_back(waypoint_lane);
 
     // apply acceleration to waypoint velocities to consider stoplines
-    waypoint_lane = apply_stopline_acceleration(waypoint_lane, waypoint_stopline_indexes, g_config_acceleration,
-                                                g_config_number_of_zeros_ahead, g_config_number_of_zeros_behind);
+    waypoint_lane =
+        apply_stop_and_slowdown(waypoint_lane, waypoint_stopline_indexes, g_config_acceleration, g_config_acceleration,
+                                g_config_number_of_zeros_behind, g_config_number_of_zeros_ahead,
+                                g_config_number_of_slowdown, g_config_slowdown_velocity_scale);
 
     red_waypoint.lanes.push_back(waypoint_lane);
   }
