@@ -217,27 +217,21 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 robot2point, const geometry
                                    const double margin, const double max_search_range)
 {
   constexpr double epsilon = 1e-4;  // near-zero guard
+  bool point_forward = (robot2point.x() >= 0) ? true : false;
+  bool move_forward = (robot2goal_pose.position.x >= 0) ? true : false;
 
   // Check if the point is in the search range
   if (robot2point.length() > max_search_range)
     return false;
 
-  if (robot2point.x() < 0 && robot2goal_pose.position.x > 0)
+  // The robot can move in the direction away from the obstacle
+  if ((point_forward && !move_forward) || (!point_forward && move_forward))
     return false;
 
   // Start pose collision detection
   if (robot2point.x() > -robot_base2back - margin && robot2point.x() < robot_length - robot_base2back + margin &&
       fabs(robot2point.y()) < robot_width * 0.5 + margin)
-  {
-    // The robot can move in the direction away from the obstacle
-    if (robot2point.x() > 0 && fabs(robot2point.y()) < (robot_width * 0.5))
-      return (robot2goal_pose.position.x > 0);
-    else if (robot2point.x() < 0 && fabs(robot2point.y()) < (robot_width * 0.5))
-      return (robot2goal_pose.position.x < 0);
-    else if (fabs(robot2point.y()) > (robot_width * 0.5))
-      return (robot2point.x() * robot2goal_pose.position.x * robot2point.y() * robot2goal_pose.position.y > 0);
     return true;
-  }
 
   // Goal pose collision detection
   tf::Vector3 robot2goal(robot2goal_pose.position.x, robot2goal_pose.position.y, 0);
@@ -252,63 +246,72 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 robot2point, const geometry
       fabs(goal2point.y()) < (robot_width * 0.5 + margin))
     return true;
 
-  // Check if the point is in the robot's trajectory
-  // Straight movement
+  // Check if the point is in the robot's trajectory - Straight movement
   if (fabs(robot2goal_direction) < epsilon || fabs(robot2goal.y()) < epsilon)
   {
     return fabs(robot2point.y()) < (robot_width * 0.5 + margin) && robot2point.x() < std::max(0.0, robot2goal.x()) &&
            robot2point.x() > std::min(0.0, robot2goal.x());
   }
 
-  // Arc movement
+  // Check if the point is in the robot's trajectory - Arc movement
   tf::Vector3 robot2arc_center(0.0, 0.0, 0.0);
   if (robot2goal.y() > 0)
-    robot2arc_center.setY((robot2goal.x() * robot2goal.x() + robot2goal.y() * robot2goal.y()) / (2.0 * robot2goal.y()));
-  else
-    robot2arc_center.setY(-(robot2goal.x() * robot2goal.x() + robot2goal.y() * robot2goal.y()) /
-                          (2.0 * robot2goal.y()));
-  double robot_outer_radius =
-      sqrt(pow(std::max(robot_length - robot_base2back, robot_base2back), 2.0) + pow(robot_width / 2.0, 2.0));
-  double zone_outer_radius = fabs(robot2arc_center.y()) + robot_outer_radius + margin;
-  double zone_inner_radius = std::max(0.0, fabs(robot2arc_center.y()) - robot_width / 2.0 - margin);
-  tf::Vector3 arc_center2point = robot2point - robot2arc_center;
-  if (arc_center2point.length() > zone_inner_radius && arc_center2point.length() < zone_outer_radius)
   {
-    if (robot2goal.x() > 0)
+    // Left turn
+    robot2arc_center.setY((robot2goal.x() * robot2goal.x() + robot2goal.y() * robot2goal.y()) / (2.0 * robot2goal.y()));
+    tf::Vector3 arc_center2point = robot2point - robot2arc_center;
+    tf::Vector3 robot2front_edge(robot_length - robot_base2back + margin, robot_width / 2.0 + margin, 0.0);
+    tf::Vector3 robot2rear_edge(-robot_base2back - margin, robot_width / 2.0 + margin, 0.0);
+    tf::Vector3 arc_center2front_edge = robot2front_edge - robot2arc_center;
+    tf::Vector3 arc_center2rear_edge = robot2rear_edge - robot2arc_center;
+    double collision_zone_inner_radius = std::max(0.0, fabs(robot2arc_center.y()) - robot_width / 2.0 - margin);
+    double collision_zone_outer_radius = std::max(arc_center2front_edge.length(),
+                                                  arc_center2rear_edge.length());  // max to cover
+    if (arc_center2point.length() > collision_zone_inner_radius &&
+        arc_center2point.length() < collision_zone_outer_radius)
     {
-      if (robot2goal.y() > 0)
+      if (move_forward)
       {
         // Forward Left
-        if (robot2point.x() > 0 && goal2point.x() < robot_length - robot_base2back + margin &&
-            !(robot2point.y() < -robot_width * 0.5 - margin) &&
-            !(goal2point.y() > (robot_width * 0.5 + margin) && goal2point.x() > 0))
+        if (robot2point.x() > 0 && robot2point.y() > -robot_width * 0.5 - margin &&
+            robot2point.y() < robot2goal.y() + robot_width * 0.5 + margin)
           return true;
       }
       else
+          // Backward Left
+          if (robot2point.x() < 0 && robot2point.y() > -robot_width * 0.5 - margin &&
+              robot2point.y() < robot2goal.y() + robot_width * 0.5 + margin)
+        return true;
+    }
+  }
+  else
+  {
+    // Right turn
+    robot2arc_center.setY(-(robot2goal.x() * robot2goal.x() + robot2goal.y() * robot2goal.y()) /
+                          (2.0 * robot2goal.y()));
+    tf::Vector3 arc_center2point = robot2point - robot2arc_center;
+    tf::Vector3 robot2front_edge(robot_length - robot_base2back + margin, -robot_width / 2.0 - margin, 0.0);
+    tf::Vector3 robot2rear_edge(-robot_base2back - margin, -robot_width / 2.0 - margin, 0.0);
+    tf::Vector3 arc_center2front_edge = robot2front_edge - robot2arc_center;
+    tf::Vector3 arc_center2rear_edge = robot2rear_edge - robot2arc_center;
+    double collision_zone_inner_radius = std::max(0.0, fabs(robot2arc_center.y()) - robot_width / 2.0 - margin);
+    double collision_zone_outer_radius = std::max(arc_center2front_edge.length(),
+                                                  arc_center2rear_edge.length());  // max to cover
+    if (arc_center2point.length() > collision_zone_inner_radius &&
+        arc_center2point.length() < collision_zone_outer_radius)
+    {
+      if (move_forward)
       {
         // Forward Right
-        if (robot2point.x() > 0 && goal2point.x() < robot_length - robot_base2back + margin &&
-            !(robot2point.y() > robot_width * 0.5 + margin) &&
-            !(goal2point.y() < -robot_width * 0.5 - margin && goal2point.x() > 0))
-          return true;
-      }
-    }
-    else
-    {
-      if (robot2goal.y() > 0)
-      {
-        // Backward Left
-        if (robot2point.x() < 0 && goal2point.x() > -robot_base2back - margin &&
-            !(robot2point.y() < -robot_width * 0.5 - margin) &&
-            !(goal2point.y() > (robot_width * 0.5 + margin) && goal2point.x() < 0))
+        if (robot2point.x() > 0 && robot2point.y() < robot_width * 0.5 + margin &&
+            robot2point.y() > robot2goal.y() - robot_width * 0.5 - margin)
           return true;
       }
       else
       {
         // Backward Right
-        if (robot2point.x() < 0 && goal2point.x() > -robot_base2back - margin &&
-            !(robot2point.y() > robot_width * 0.5 + margin) &&
-            !(goal2point.y() < -robot_width * 0.5 - margin && goal2point.x() < 0))
+        if (robot2point.x() < 0 && robot2point.y() < robot_width * 0.5 + margin &&
+            robot2point.y() > robot2goal.y() - robot_width * 0.5 - margin)
           return true;
       }
     }
@@ -340,11 +343,14 @@ bool isPointInRectWaypoint2Waypoint(const tf::Vector3 robot2point, const geometr
       start2point_robot_coord.x() * cos(-robot2start_yaw) - start2point_robot_coord.y() * sin(-robot2start_yaw),
       start2point_robot_coord.x() * sin(-robot2start_yaw) + start2point_robot_coord.y() * cos(-robot2start_yaw), 0);
 
-  // If obstacle is behind start and goal is ahead, we can move away
-  if (start2point.x() < 0 && start2goal.x() > 0)
+  bool point_forward = (start2point.x() >= 0) ? true : false;
+  bool move_forward = (start2goal.x() >= 0) ? true : false;
+
+  // The robot can move in the direction away from the obstacle
+  if ((point_forward && !move_forward) || (!point_forward && move_forward))
     return false;
 
-  // Start pose collision detection (AND)
+  // Start pose collision detection
   if (start2point.x() > (-robot_base2back - margin) && start2point.x() < (robot_length - robot_base2back + margin) &&
       fabs(start2point.y()) < (robot_width * 0.5 + margin))
     return true;
@@ -352,7 +358,6 @@ bool isPointInRectWaypoint2Waypoint(const tf::Vector3 robot2point, const geometr
   // Goal pose collision detection
   if (start2goal.length() < epsilon)
     return false;
-
   double start2goal_direction = normalizeAngle(atan2(start2goal.y(), start2goal.x()));
   double start2goal_yaw = normalizeAngle(start2goal_direction * 2.0);
   double goal_yaw = normalizeAngle(robot2start_yaw + start2goal_yaw);
@@ -363,63 +368,74 @@ bool isPointInRectWaypoint2Waypoint(const tf::Vector3 robot2point, const geometr
       fabs(goal2point.y()) < (robot_width * 0.5 + margin))
     return true;
 
-  // Check if the point is in the robot's trajectory (START frame)
-  // Straight movement
+  // Check if the point is in the robot's trajectory - Straight movement
   if (fabs(start2goal_direction) < epsilon || fabs(start2goal.y()) < epsilon)
   {
     return fabs(start2point.y()) < (robot_width * 0.5 + margin) && start2point.x() < std::max(0.0, start2goal.x()) &&
            start2point.x() > std::min(0.0, start2goal.x());
   }
 
-  // Arc movement
+  // Check if the point is in the robot's trajectory - Arc movement
   tf::Vector3 start2arc_center(0.0, 0.0, 0.0);
   if (start2goal.y() > 0)
-    start2arc_center.setY((start2goal.x() * start2goal.x() + start2goal.y() * start2goal.y()) / (2.0 * start2goal.y()));
-  else
-    start2arc_center.setY(-(start2goal.x() * start2goal.x() + start2goal.y() * start2goal.y()) /
-                          (2.0 * start2goal.y()));
-  double robot_outer_radius =
-      sqrt(pow(std::max(robot_length - robot_base2back, robot_base2back), 2.0) + pow(robot_width / 2.0, 2.0));
-  double zone_outer_radius = fabs(start2arc_center.y()) + robot_outer_radius + margin;
-  double zone_inner_radius = std::max(0.0, fabs(start2arc_center.y()) - robot_width / 2.0 - margin);
-  tf::Vector3 arc_center2point = start2point - start2arc_center;
-  if (arc_center2point.length() > zone_inner_radius && arc_center2point.length() < zone_outer_radius)
   {
-    if (start2goal.x() > 0)
+    // Left turn
+    start2arc_center.setY((start2goal.x() * start2goal.x() + start2goal.y() * start2goal.y()) / (2.0 * start2goal.y()));
+    tf::Vector3 arc_center2point = start2point - start2arc_center;
+    tf::Vector3 start2front_edge(robot_length - robot_base2back + margin, robot_width / 2.0 + margin, 0.0);
+    tf::Vector3 start2rear_edge(-robot_base2back - margin, robot_width / 2.0 + margin, 0.0);
+    tf::Vector3 arc_center2front_edge = start2front_edge - start2arc_center;
+    tf::Vector3 arc_center2rear_edge = start2rear_edge - start2arc_center;
+    double collision_zone_inner_radius = std::max(0.0, fabs(start2arc_center.y()) - robot_width / 2.0 - margin);
+    double collision_zone_outer_radius = std::max(arc_center2front_edge.length(),
+                                                  arc_center2rear_edge.length());  // max to cover
+    if (arc_center2point.length() > collision_zone_inner_radius &&
+        arc_center2point.length() < collision_zone_outer_radius)
     {
-      if (start2goal.y() > 0)
+      if (move_forward)
       {
         // Forward Left
-        if (start2point.x() > 0 && goal2point.x() < robot_length - robot_base2back + margin &&
-            !(start2point.y() < -robot_width * 0.5 - margin) &&
-            !(goal2point.y() > robot_width * 0.5 + margin && goal2point.x() > 0))
+        if (start2point.x() > 0 && start2point.y() > -robot_width * 0.5 - margin &&
+            start2point.y() < start2goal.y() + robot_width * 0.5 + margin)
           return true;
       }
       else
       {
-        // Forward Right
-        if (start2point.x() > 0 && goal2point.x() < robot_length - robot_base2back + margin &&
-            !(start2point.y() > robot_width * 0.5 + margin) &&
-            !(goal2point.y() < -robot_width * 0.5 - margin && goal2point.x() > 0))
+        // Backward Left
+        if (start2point.x() < 0 && start2point.y() > -robot_width * 0.5 - margin &&
+            start2point.y() < start2goal.y() + robot_width * 0.5 + margin)
           return true;
       }
     }
-    else
+  }
+  else
+  {
+    // Right turn
+    start2arc_center.setY(-(start2goal.x() * start2goal.x() + start2goal.y() * start2goal.y()) /
+                          (2.0 * start2goal.y()));
+    tf::Vector3 arc_center2point = start2point - start2arc_center;
+    tf::Vector3 start2front_edge(robot_length - robot_base2back + margin, -robot_width / 2.0 - margin, 0.0);
+    tf::Vector3 start2rear_edge(-robot_base2back - margin, -robot_width / 2.0 - margin, 0.0);
+    tf::Vector3 arc_center2front_edge = start2front_edge - start2arc_center;
+    tf::Vector3 arc_center2rear_edge = start2rear_edge - start2arc_center;
+    double collision_zone_inner_radius = std::max(0.0, fabs(start2arc_center.y()) - robot_width / 2.0 - margin);
+    double collision_zone_outer_radius = std::max(arc_center2front_edge.length(),
+                                                  arc_center2rear_edge.length());  // max to cover
+    if (arc_center2point.length() > collision_zone_inner_radius &&
+        arc_center2point.length() < collision_zone_outer_radius)
     {
-      // Backward Right
-      if (start2goal.y() < 0)
+      if (move_forward)
       {
-        if (start2point.x() < 0 && goal2point.x() > -robot_base2back - margin &&
-            !(start2point.y() > robot_width * 0.5 + margin) &&
-            !(goal2point.y() < -robot_width * 0.5 - margin && goal2point.x() < 0))
+        // Forward Right
+        if (start2point.x() > 0 && start2point.y() < robot_width * 0.5 + margin &&
+            start2point.y() > start2goal.y() - robot_width * 0.5 - margin)
           return true;
       }
-      // Backward Left
       else
       {
-        if (start2point.x() < 0 && goal2point.x() > -robot_base2back - margin &&
-            !(start2point.y() < -robot_width * 0.5 - margin) &&
-            !(goal2point.y() > robot_width * 0.5 + margin && goal2point.x() < 0))
+        // Backward Right
+        if (start2point.x() < 0 && start2point.y() < robot_width * 0.5 + margin &&
+            start2point.y() > start2goal.y() - robot_width * 0.5 - margin)
           return true;
       }
     }
@@ -431,24 +447,20 @@ bool isPointInCurcleCurrent2Waypoint(tf::Vector3 robot2point, const geometry_msg
                                      const double robot_radius, const double max_search_range)
 {
   constexpr double epsilon = 1e-4;  // near-zero guard
+  bool point_forward = (robot2point.x() >= 0) ? true : false;
+  bool move_forward = (robot2goal_pose.position.x >= 0) ? true : false;
+
   // Check if the point is in the search range
   if (robot2point.length() > max_search_range)
     return false;
 
   // The robot can move in the direction away from the obstacle
-  if (robot2point.x() < 0 && robot2goal_pose.position.x > 0)
+  if ((point_forward && !move_forward) || (!point_forward && move_forward))
     return false;
-  else if (robot2point.length() < robot_radius)
-  {
-    if (robot2point.x() > 0 && robot2point.y() > 0)
-      return (robot2goal_pose.position.x > 0 && robot2goal_pose.position.y > 0);
-    else if (robot2point.x() < 0 && robot2point.y() > 0)
-      return (robot2goal_pose.position.x < 0 && robot2goal_pose.position.y > 0);
-    else if (robot2point.x() < 0 && robot2point.y() < 0)
-      return (robot2goal_pose.position.x < 0 && robot2goal_pose.position.y < 0);
-    else if (robot2point.x() > 0 && robot2point.y() < 0)
-      return (robot2goal_pose.position.x > 0 && robot2goal_pose.position.y < 0);
-  }
+
+  // Start pose collision detection
+  if (robot2point.length() < robot_radius)
+    return true;
 
   // Goal pose collision detection
   tf::Vector3 robot2goal(robot2goal_pose.position.x, robot2goal_pose.position.y, 0);
@@ -461,55 +473,60 @@ bool isPointInCurcleCurrent2Waypoint(tf::Vector3 robot2point, const geometry_msg
   double goal_yaw = normalizeAngle(robot2goal_direction * 2.0);
   tf::Vector3 goal2point(goal2point_robot_coord.x() * cos(-goal_yaw) - goal2point_robot_coord.y() * sin(-goal_yaw),
                          goal2point_robot_coord.x() * sin(-goal_yaw) + goal2point_robot_coord.y() * cos(-goal_yaw), 0);
-  // Check if the point is in the robot's trajectory
-  // Straight movement
+  // Check if the point is in the robot's trajectory - Straight movement
   if (fabs(robot2goal_direction) < epsilon || fabs(robot2goal.y()) < epsilon)
   {
     return fabs(robot2point.y()) < robot_radius && robot2point.x() < std::max(0.0, robot2goal.x()) &&
            robot2point.x() > std::min(0.0, robot2goal.x());
   }
 
-  // Arc movement
-  // Center of the arc of the robot's trajectory
+  // Check if the point is in the robot's trajectory - Arc movement
   tf::Vector3 robot2arc_center(0.0, 0.0, 0.0);
   if (robot2goal.y() > 0)
-    robot2arc_center.setY((robot2goal.x() * robot2goal.x() + robot2goal.y() * robot2goal.y()) / (2.0 * robot2goal.y()));
-  else
-    robot2arc_center.setY(-(robot2goal.x() * robot2goal.x() + robot2goal.y() * robot2goal.y()) /
-                          (2.0 * robot2goal.y()));
-  // Maximum radius of the arc of the robot's trajectory
-  double zone_outer_radius = fabs(robot2arc_center.y()) + robot_radius;
-  double zone_inner_radius = std::max(0.0, fabs(robot2arc_center.y()) - robot_radius);
-  tf::Vector3 arc_center2point = robot2point - robot2arc_center;
-  if (arc_center2point.length() > zone_inner_radius && arc_center2point.length() < zone_outer_radius)
   {
-    if (robot2goal.x() > 0)
+    // Left turn
+    robot2arc_center.setY((robot2goal.x() * robot2goal.x() + robot2goal.y() * robot2goal.y()) / (2.0 * robot2goal.y()));
+    tf::Vector3 arc_center2point = robot2point - robot2arc_center;
+    double collision_zone_inner_radius = std::max(0.0, fabs(robot2arc_center.y()) - robot_radius);
+    double collision_zone_outer_radius = fabs(robot2arc_center.y()) + robot_radius;
+    if (arc_center2point.length() > collision_zone_inner_radius &&
+        arc_center2point.length() < collision_zone_outer_radius)
     {
-      if (robot2goal.y() > 0)
+      if (move_forward)
       {
         // Forward Left
-        if (robot2point.x() > 0 && goal2point.x() < 0)
+        if (robot2point.x() > 0 && robot2point.y() > -robot_radius && robot2point.y() < robot2goal.y() + robot_radius)
           return true;
       }
       else
       {
-        // Forward Right
-        if (robot2point.x() > 0 && goal2point.x() < 0)
+        // Backward Left
+        if (robot2point.x() < 0 && robot2point.y() > -robot_radius && robot2point.y() < robot2goal.y() + robot_radius)
           return true;
       }
     }
-    else
+  }
+  else
+  {
+    // Right turn
+    robot2arc_center.setY(-(robot2goal.x() * robot2goal.x() + robot2goal.y() * robot2goal.y()) /
+                          (2.0 * robot2goal.y()));
+    tf::Vector3 arc_center2point = robot2point - robot2arc_center;
+    double collision_zone_inner_radius = std::max(0.0, fabs(robot2arc_center.y()) - robot_radius);
+    double collision_zone_outer_radius = fabs(robot2arc_center.y()) + robot_radius;
+    if (arc_center2point.length() > collision_zone_inner_radius &&
+        arc_center2point.length() < collision_zone_outer_radius)
     {
-      if (robot2goal.y() > 0)
+      if (move_forward)
       {
-        // Backward Left
-        if (robot2point.x() < 0 && goal2point.x() > 0)
+        // Forward Right
+        if (robot2point.x() > 0 && robot2point.y() < robot_radius && robot2point.y() > robot2goal.y() - robot_radius)
           return true;
       }
       else
       {
         // Backward Right
-        if (robot2point.x() < 0 && goal2point.x() > 0)
+        if (robot2point.x() < 0 && robot2point.y() < robot_radius && robot2point.y() > robot2goal.y() - robot_radius)
           return true;
       }
     }
@@ -539,74 +556,83 @@ bool isPointInCurcleWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_ms
       start2point_robot_coord.x() * cos(-robot2start_yaw) - start2point_robot_coord.y() * sin(-robot2start_yaw),
       start2point_robot_coord.x() * sin(-robot2start_yaw) + start2point_robot_coord.y() * cos(-robot2start_yaw), 0);
 
+  bool point_forward = (start2point.x() >= 0) ? true : false;
+  bool move_forward = (start2goal.x() >= 0) ? true : false;
+
   // The robot can move in the direction away from the obstacle
-  if (start2point.x() < 0 && start2goal.x() > 0)
+  if ((point_forward && !move_forward) || (!point_forward && move_forward))
     return false;
 
   // Start pose collision detection
   if (start2point.length() < robot_radius)
     return true;
+
+  // Goal pose collision detection
   if (start2goal.length() < epsilon)
     return false;
-
   double start2goal_direction = normalizeAngle(atan2(start2goal.y(), start2goal.x()));
   double start2goal_yaw = normalizeAngle(start2goal_direction * 2.0);
   double goal_yaw = normalizeAngle(robot2start_yaw + start2goal_yaw);
   tf::Vector3 goal2point_robot_coord = robot2point - robot2goal;
   tf::Vector3 goal2point(goal2point_robot_coord.x() * cos(-goal_yaw) - goal2point_robot_coord.y() * sin(-goal_yaw),
                          goal2point_robot_coord.x() * sin(-goal_yaw) + goal2point_robot_coord.y() * cos(-goal_yaw), 0);
-  // Goal pose collision detection
   if (goal2point.length() < robot_radius)
     return true;
 
-  // Check if the point is in the robot's trajectory
-  // Straight movement
+  // Check if the point is in the robot's trajectory - Straight movement
   if (fabs(start2goal_direction) < epsilon || fabs(start2goal.y()) < epsilon)
   {
     return fabs(start2point.y()) < robot_radius && start2point.x() < std::max(0.0, start2goal.x()) &&
            start2point.x() > std::min(0.0, start2goal.x());
   }
 
-  // Arc movement
-  // Center of the arc of the robot's trajectory
+  // Check if the point is in the robot's trajectory - Arc movement
   tf::Vector3 start2arc_center(0.0, 0.0, 0.0);
   if (start2goal.y() > 0)
-    start2arc_center.setY((start2goal.x() * start2goal.x() + start2goal.y() * start2goal.y()) / (2.0 * start2goal.y()));
-  else
-    start2arc_center.setY(-(start2goal.x() * start2goal.x() + start2goal.y() * start2goal.y()) /
-                          (2.0 * start2goal.y()));
-  double zone_outer_radius = fabs(start2arc_center.y()) + robot_radius;
-  double zone_inner_radius = fabs(start2arc_center.y()) - robot_radius;
-  tf::Vector3 arc_center2point = start2point - start2arc_center;
-  if (arc_center2point.length() > zone_inner_radius && arc_center2point.length() < zone_outer_radius)
   {
-    if (start2goal.x() > 0)
+    // Left turn
+    start2arc_center.setY((start2goal.x() * start2goal.x() + start2goal.y() * start2goal.y()) / (2.0 * start2goal.y()));
+    double collision_zone_outer_radius = fabs(start2arc_center.y()) + robot_radius;
+    double collision_zone_inner_radius = fabs(start2arc_center.y()) - robot_radius;
+    tf::Vector3 arc_center2point = start2point - start2arc_center;
+    if (arc_center2point.length() > collision_zone_inner_radius &&
+        arc_center2point.length() < collision_zone_outer_radius)
     {
-      if (start2goal.y() > 0)
+      if (move_forward)
       {
         // Forward Left
-        if (start2point.x() > 0 && goal2point.x() < 0)
+        if (start2point.x() > 0 && start2point.y() > -robot_radius && start2point.y() < start2goal.y() + robot_radius)
           return true;
       }
       else
       {
-        // Forward Right
-        if (start2point.x() > 0 && goal2point.x() < 0)
+        // Backward Left
+        if (start2point.x() < 0 && start2point.y() > -robot_radius && start2point.y() < start2goal.y() + robot_radius)
           return true;
       }
     }
-    else
+  }
+  else
+  {
+    // Right turn
+    start2arc_center.setY(-(start2goal.x() * start2goal.x() + start2goal.y() * start2goal.y()) /
+                          (2.0 * start2goal.y()));
+    double collision_zone_outer_radius = fabs(start2arc_center.y()) + robot_radius;
+    double collision_zone_inner_radius = fabs(start2arc_center.y()) - robot_radius;
+    tf::Vector3 arc_center2point = start2point - start2arc_center;
+    if (arc_center2point.length() > collision_zone_inner_radius &&
+        arc_center2point.length() < collision_zone_outer_radius)
     {
-      if (start2goal.y() > 0)
+      if (move_forward)
       {
-        // Backward Left
-        if (start2point.x() < 0 && goal2point.x() > 0)
+        // Forward Right
+        if (start2point.x() > 0 && start2point.y() < robot_radius && start2point.y() > start2goal.y() - robot_radius)
           return true;
       }
       else
       {
         // Backward Right
-        if (start2point.x() < 0 && goal2point.x() > 0)
+        if (start2point.x() < 0 && start2point.y() < robot_radius && start2point.y() > start2goal.y() - robot_radius)
           return true;
       }
     }
