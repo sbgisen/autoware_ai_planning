@@ -1244,9 +1244,10 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
                      int obstacle_waypoint, const ros::Publisher& final_waypoints_pub, VelocitySetPath* vs_path)
 {
   double deceleration = vs_info.getVelocityChangeLimit();
-
+  vs_path->initializeNewWaypoints();
   if (detection_result == EControl::STOP || detection_result == EControl::STOPLINE)  // STOP for obstacle/stopline
-  {  // stop_waypoint is about stop_distance meter away from obstacles/stoplines
+  {
+    // stop_waypoint is about stop_distance meter away from obstacles/stoplines
     // change waypoints to stop by the stop_waypoint
     deceleration = (detection_result == EControl::STOPLINE) ? vs_info.getDecelerationStopline() :
                                                               vs_info.getDecelerationObstacle();
@@ -1257,7 +1258,6 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
   }
   else if (detection_result == EControl::DECELERATE)  // DECELERATE for obstacles
   {
-    vs_path->initializeNewWaypoints();
     deceleration = vs_info.getDecelerationObstacle();
     double decel_distance = vs_info.getDecelerationDistanceObstacle();
     int decel_first_index = calcWaypointIndexReverse(vs_path->getPrevWaypoints(), obstacle_waypoint, decel_distance);
@@ -1266,7 +1266,7 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
   }
   else
   {  // KEEP
-    vs_path->initializeNewWaypoints();
+     // do nothing
   }
 
   vs_path->avoidSuddenDeceleration(vs_info.getVelocityChangeLimit(), deceleration, closest_waypoint);
