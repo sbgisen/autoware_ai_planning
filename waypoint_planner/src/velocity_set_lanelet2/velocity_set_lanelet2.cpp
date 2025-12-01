@@ -681,6 +681,18 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
     geometry_msgs::Pose waypoint_pose = getRelativePose(vs_info.getLocalizerPose(), lane.waypoints[i].pose.pose);
     waypoint_pose.position.z = 0;
 
+    double current_index_vel = lane.waypoints[i].twist.twist.linear.x;
+
+    // avoid the case where waypoint is in the opposite direction to the target velocity
+    if (waypoint_pose.position.x < 0 && current_index_vel > 1.0e-4)
+    {
+      waypoint_pose.position.x = 1.0e-4;
+    }
+    else if (waypoint_pose.position.x > 0 && current_index_vel < -1.0e-4)
+    {
+      waypoint_pose.position.x = -1.0e-4;
+    }
+
     // Detect obstacles at the current waypoint
     int stop_point_count = 0;
     for (const auto& p : points)
@@ -724,19 +736,14 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
         }
       }
 
-      double current_index_vel = lane.waypoints[i].twist.twist.linear.x;
-      bool moving_forward = (current_index_vel >= 0.0);
       if (in_collision)
       {
-        if ((moving_forward && p.x > 0.0) || (!moving_forward && p.x < 0.0))
-        {
-          stop_point_count++;
-          geometry_msgs::Point point_temp;
-          point_temp.x = p.x;
-          point_temp.y = p.y;
-          point_temp.z = p.z;
-          obstacle_points->setStopPoint(calcAbsoluteCoordinate(point_temp, vs_info.getLocalizerPose()));
-        }
+        stop_point_count++;
+        geometry_msgs::Point point_temp;
+        point_temp.x = p.x;
+        point_temp.y = p.y;
+        point_temp.z = p.z;
+        obstacle_points->setStopPoint(calcAbsoluteCoordinate(point_temp, vs_info.getLocalizerPose()));
       }
     }
 
