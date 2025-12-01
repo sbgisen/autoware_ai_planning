@@ -278,10 +278,10 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 robot2point, const geometry
           return true;
       }
       else
-          // Backward Left
-          if (robot2point.x() < 0 && robot2point.y() > -robot_width * 0.5 - margin &&
-              robot2point.y() < robot2goal.y() + robot_width * 0.5 + margin)
-        return true;
+        // Backward Left
+        if (robot2point.x() < 0 && robot2point.y() > -robot_width * 0.5 - margin &&
+            robot2point.y() < robot2goal.y() + robot_width * 0.5 + margin)
+          return true;
     }
   }
   else
