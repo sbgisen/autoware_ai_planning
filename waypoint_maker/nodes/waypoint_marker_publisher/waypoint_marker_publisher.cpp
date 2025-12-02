@@ -373,7 +373,7 @@ void createGlobalLaneArrayTurnMarker(const autoware_msgs::LaneArray& lane_waypoi
         lane_waypoint_marker.id = i;
         lane_waypoint_marker.pose = lane.waypoints[i].pose.pose;
 
-        tf2::Quaternion directional_offset(0, 0, 0);
+        tf2::Quaternion directional_offset;
         tf2::Quaternion wp_orientation;
         tf2::convert(lane_waypoint_marker.pose.orientation, wp_orientation);
 
@@ -487,6 +487,58 @@ void createLocalPointMarker(const autoware_msgs::Lane& lane_waypoint)
   g_local_waypoints_marker_array.markers.push_back(lane_waypoint_marker);
 }
 
+void createLocalTrafficLightIndicatorMarker(const autoware_msgs::Lane& lane_waypoint)
+{
+  if (_closest_waypoint < 0 || _closest_waypoint >= static_cast<int>(lane_waypoint.waypoints.size()))
+    return;
+
+  const geometry_msgs::Pose& base_pose = lane_waypoint.waypoints[_closest_waypoint].pose.pose;
+
+  // traffic light body
+  visualization_msgs::Marker body;
+  body.header.frame_id = "map";
+  body.header.stamp = ros::Time::now();
+  body.ns = "traffic_light_indicator";
+  body.id = 0;
+  body.type = visualization_msgs::Marker::CUBE;
+  body.action = visualization_msgs::Marker::ADD;
+  body.frame_locked = true;
+
+  body.pose = base_pose;
+  body.pose.position.z += 1.8;  // above the robot
+
+  body.scale.x = 0.3;
+  body.scale.y = 0.1;
+  body.scale.z = 0.6;
+
+  body.color.r = 0.1;
+  body.color.g = 0.1;
+  body.color.b = 0.1;
+  body.color.a = 0.8;
+
+  g_local_waypoints_marker_array.markers.push_back(body);
+
+  // light (single circle representing current state)
+  visualization_msgs::Marker light;
+  light.header = body.header;
+  light.ns = "traffic_light_indicator";
+  light.id = 1;
+  light.type = visualization_msgs::Marker::SPHERE;
+  light.action = visualization_msgs::Marker::ADD;
+  light.frame_locked = true;
+
+  light.pose = base_pose;
+  light.pose.position.z += 1.8;  // center of the body
+
+  light.scale.x = 0.18;
+  light.scale.y = 0.18;
+  light.scale.z = 0.18;
+
+  light.color = g_local_color;  // red / green / yellowish
+
+  g_local_waypoints_marker_array.markers.push_back(light);
+}
+
 void lightCallback(const autoware_msgs::TrafficLightConstPtr& msg)
 {
   std_msgs::ColorRGBA global_color;
@@ -555,10 +607,20 @@ void laneArrayCallback(const autoware_msgs::LaneArrayConstPtr& msg)
 void finalCallback(const autoware_msgs::LaneConstPtr& msg)
 {
   g_local_waypoints_marker_array.markers.clear();
+
+  // path at robot height
+  createLocalPathMarker(g_local_color, *msg);
+
+  // colored spheres
+  createLocalPointMarker(*msg);
+
+  // velocity visualization
   if (_closest_waypoint != -1)
     createLocalWaypointVelocityMarker(g_local_color, _closest_waypoint, *msg);
-  createLocalPathMarker(g_local_color, *msg);
-  createLocalPointMarker(*msg);
+
+  // indicator on top of the robot
+  createLocalTrafficLightIndicatorMarker(*msg);
+
   setLifetime(0.5, &g_local_waypoints_marker_array);
   publishMarkerArray(g_local_waypoints_marker_array, g_local_mark_pub);
 }
