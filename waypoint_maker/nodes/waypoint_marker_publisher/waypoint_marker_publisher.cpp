@@ -237,7 +237,6 @@ void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA base_color, int close
 {
   if (lane_waypoint.waypoints.empty())
     return;
-
   visualization_msgs::Marker bars;
   bars.header.frame_id = "map";
   bars.header.stamp = ros::Time::now();
@@ -533,27 +532,35 @@ void createLocalPointMarker(const autoware_msgs::Lane& lane_waypoint)
 
 void createLocalTrafficLightIndicatorMarker(const autoware_msgs::Lane& lane_waypoint)
 {
-  if (_closest_waypoint < 0 || _closest_waypoint >= static_cast<int>(lane_waypoint.waypoints.size()))
+  // no lane = nothing to draw
+  if (lane_waypoint.waypoints.empty())
     return;
 
-  const geometry_msgs::Pose& base_pose = lane_waypoint.waypoints[_closest_waypoint].pose.pose;
+  // use closest waypoint if available, otherwise use the very first waypoint
+  int wp_index = _closest_waypoint;
+  if (wp_index < 0 || wp_index >= static_cast<int>(lane_waypoint.waypoints.size()))
+  {
+    wp_index = 0;  // fallback
+  }
+
+  const geometry_msgs::Pose& base_pose = lane_waypoint.waypoints[wp_index].pose.pose;
 
   // traffic light body
   visualization_msgs::Marker body;
   body.header.frame_id = "map";
   body.header.stamp = ros::Time::now();
-  body.ns = "traffic_light_indicator";
+  body.ns = "local_traffic_light_indicator";
   body.id = 0;
   body.type = visualization_msgs::Marker::CUBE;
   body.action = visualization_msgs::Marker::ADD;
   body.frame_locked = true;
 
   body.pose = base_pose;
-  body.pose.position.z += 1.8;  // above the robot
+  body.pose.position.z += 1.8;
 
-  body.scale.x = 0.3;
-  body.scale.y = 0.1;
-  body.scale.z = 0.6;
+  body.scale.x = 0.4;
+  body.scale.y = 0.15;
+  body.scale.z = 0.8;
 
   body.color.r = 0.1;
   body.color.g = 0.1;
@@ -562,23 +569,25 @@ void createLocalTrafficLightIndicatorMarker(const autoware_msgs::Lane& lane_wayp
 
   g_local_waypoints_marker_array.markers.push_back(body);
 
-  // light (single circle representing current state)
+  // traffic light color sphere
   visualization_msgs::Marker light;
   light.header = body.header;
-  light.ns = "traffic_light_indicator";
+  light.ns = "local_traffic_light_indicator";
   light.id = 1;
   light.type = visualization_msgs::Marker::SPHERE;
   light.action = visualization_msgs::Marker::ADD;
   light.frame_locked = true;
 
   light.pose = base_pose;
-  light.pose.position.z += 1.8;  // center of the body
+  light.pose.position.z += 1.8;
 
-  light.scale.x = 0.18;
-  light.scale.y = 0.18;
-  light.scale.z = 0.18;
+  light.scale.x = 0.25;
+  light.scale.y = 0.25;
+  light.scale.z = 0.25;
 
-  light.color = g_local_color;  // red / green / yellowish
+  light.color = g_local_color;
+  if (light.color.a == 0.0)
+    light.color.a = g_local_alpha;
 
   g_local_waypoints_marker_array.markers.push_back(light);
 }
