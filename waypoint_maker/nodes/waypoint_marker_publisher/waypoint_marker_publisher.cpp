@@ -232,51 +232,95 @@ void createGlobalLaneArrayChangeFlagMarker(const autoware_msgs::LaneArray& lane_
                                        tmp_marker_array.markers.end());
 }
 
-void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA color, int closest_waypoint,
+void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA base_color, int closest_waypoint,
                                        const autoware_msgs::Lane& lane_waypoint)
 {
-  // display by markers the velocity of each waypoint.
-  visualization_msgs::Marker velocity;
-  velocity.header.frame_id = "map";
-  velocity.header.stamp = ros::Time::now();
-  velocity.ns = "local_waypoint_velocity";
-  velocity.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
-  velocity.action = visualization_msgs::Marker::ADD;
-  velocity.scale.z = 0.1;
-  velocity.color = color;
-  velocity.frame_locked = true;
+  if (lane_waypoint.waypoints.empty())
+    return;
 
-  for (int i = 0; i < static_cast<int>(lane_waypoint.waypoints.size()); i++)
+  visualization_msgs::Marker bars;
+  bars.header.frame_id = "map";
+  bars.header.stamp = ros::Time::now();
+  bars.ns = "local_waypoint_velocity_bar";
+  bars.id = 0;
+  bars.type = visualization_msgs::Marker::LINE_LIST;
+  bars.action = visualization_msgs::Marker::ADD;
+  bars.frame_locked = true;
+
+  bars.scale.x = 0.03;  // thickness of bars
+  bars.color = base_color;
+  bars.color.a = 0.3;  // semi-transparent
+
+  const double base_z = lane_waypoint.waypoints.front().pose.pose.position.z;
+  const double scale = 0.05;  // [m per km/h], adjust as you like
+
+  std::vector<double> speeds_kmph;
+  speeds_kmph.reserve(lane_waypoint.waypoints.size());
+
+  for (const auto& wp : lane_waypoint.waypoints)
   {
-    velocity.id = i;
-    geometry_msgs::Point relative_p;
-    relative_p.x = 0;
-    relative_p.y = 0;
-    relative_p.z = 0.1;
-    if (lane_waypoint.waypoints[i].twist.twist.linear.x > 0)
+    double v_kmph = mps2kmph(wp.twist.twist.linear.x);
+    speeds_kmph.push_back(v_kmph);
+
+    geometry_msgs::Point p0 = wp.pose.pose.position;
+    p0.z = base_z;
+
+    geometry_msgs::Point p1 = p0;
+    p1.z += std::fabs(v_kmph) * scale;
+
+    bars.points.push_back(p0);
+    bars.points.push_back(p1);
+  }
+
+  g_local_waypoints_marker_array.markers.push_back(bars);
+  // Text markers at plateau speeds
+  visualization_msgs::Marker text;
+  text.header.frame_id = "map";
+  text.header.stamp = ros::Time::now();
+  text.ns = "local_waypoint_velocity_text";
+  text.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+  text.action = visualization_msgs::Marker::ADD;
+  text.scale.z = 0.2;
+  text.color.r = 1.0;
+  text.color.g = 1.0;
+  text.color.b = 1.0;
+  text.color.a = 0.9;
+  text.frame_locked = true;
+
+  const double plateau_threshold = 2.0;  // [km/h] variation
+  const int min_plateau_length = 5;      // at least this many points
+
+  int plateau_start = 0;
+  for (size_t i = 1; i <= speeds_kmph.size(); ++i)
+  {
+    bool end_of_lane = (i == speeds_kmph.size());
+    bool break_plateau = false;
+
+    if (!end_of_lane)
     {
-      double velocity_scaled = std::max(1.0, 0.2 + lane_waypoint.waypoints[i].twist.twist.linear.x / 3.6);
-
-      velocity.color.r = 0.2;
-      velocity.color.g = 0.2;
-      velocity.color.b = velocity_scaled;
+      if (std::fabs(speeds_kmph[i] - speeds_kmph[plateau_start]) > plateau_threshold)
+        break_plateau = true;
     }
-    else if (lane_waypoint.waypoints[i].twist.twist.linear.x < 0)
+
+    if (end_of_lane || break_plateau)
     {
-      double velocity_scaled = std::max(1.0, 0.2 - lane_waypoint.waypoints[i].twist.twist.linear.x / 3.6);
-      velocity.color.r = velocity_scaled;
-      velocity.color.g = 0.2;
-      velocity.color.b = 0.2;
+      int length = static_cast<int>(i - plateau_start);
+      if (length >= min_plateau_length)
+      {
+        int center_idx = plateau_start + length / 2;
+
+        text.id = center_idx;
+        text.pose = lane_waypoint.waypoints[center_idx].pose.pose;
+        text.pose.position.z = base_z + std::fabs(speeds_kmph[center_idx]) * scale + 0.3;
+
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(1) << speeds_kmph[center_idx];
+        text.text = oss.str();
+
+        g_local_waypoints_marker_array.markers.push_back(text);
+      }
+      plateau_start = i;
     }
-    velocity.pose.position = calcAbsoluteCoordinate(relative_p, lane_waypoint.waypoints[i].pose.pose);
-    velocity.pose.position.z += 0.2;
-
-    // double to string
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1) << mps2kmph(lane_waypoint.waypoints[i].twist.twist.linear.x);
-    velocity.text = oss.str();
-
-    g_local_waypoints_marker_array.markers.push_back(velocity);
   }
 }
 
