@@ -39,17 +39,13 @@ constexpr int32_t TRAFFIC_LIGHT_RED = 0;
 constexpr int32_t TRAFFIC_LIGHT_GREEN = 1;
 constexpr int32_t TRAFFIC_LIGHT_UNKNOWN = 2;
 
-std_msgs::ColorRGBA _initial_color;
-std_msgs::ColorRGBA _global_color;
-std_msgs::ColorRGBA g_local_color;
-const double g_global_alpha = 0.2;
-const double g_local_alpha = 1.0;
 int _closest_waypoint = -1;
 
 visualization_msgs::MarkerArray g_global_marker_array;
 visualization_msgs::MarkerArray g_local_waypoints_marker_array;
 
 bool g_config_manual_detection = true;
+int32_t g_current_traffic_light = TRAFFIC_LIGHT_UNKNOWN;
 
 enum class ChangeFlag : int32_t
 {
@@ -566,40 +562,69 @@ void createLocalTrafficLightIndicatorMarker(const autoware_msgs::Lane& lane_wayp
   body.frame_locked = true;
 
   body.pose = base_pose;
-  body.pose.position.z += 1.8;
+  body.pose.position.z += 0.5;
 
-  body.scale.x = 0.4;
-  body.scale.y = 0.15;
-  body.scale.z = 0.8;
+  // box size (slightly tall to fit three lamps)
+  body.scale.x = 0.02;
+  body.scale.y = 0.4;
+  body.scale.z = 1.1;
 
-  body.color.r = 0.1;
-  body.color.g = 0.1;
-  body.color.b = 0.1;
-  body.color.a = 0.8;
+  body.color.r = 0.1f;
+  body.color.g = 0.1f;
+  body.color.b = 0.1f;
+  body.color.a = 0.8f;
 
   g_local_waypoints_marker_array.markers.push_back(body);
 
-  // traffic light color sphere
-  visualization_msgs::Marker light;
-  light.header = body.header;
-  light.ns = "local_traffic_light_indicator";
-  light.id = 1;
-  light.type = visualization_msgs::Marker::SPHERE;
-  light.action = visualization_msgs::Marker::ADD;
-  light.frame_locked = true;
+  // helper lambda to create one lamp
+  auto makeLamp = [&](int id, double dz, float r, float g, float b, float a) {
+    visualization_msgs::Marker lamp;
+    lamp.header = body.header;
+    lamp.ns = "local_traffic_light_indicator";
+    lamp.id = id;
+    lamp.type = visualization_msgs::Marker::SPHERE;
+    lamp.action = visualization_msgs::Marker::ADD;
+    lamp.frame_locked = true;
 
-  light.pose = base_pose;
-  light.pose.position.z += 1.8;
+    lamp.pose = body.pose;
+    lamp.pose.position.z += dz;
 
-  light.scale.x = 0.25;
-  light.scale.y = 0.25;
-  light.scale.z = 0.25;
+    lamp.scale.x = 0.3;
+    lamp.scale.y = 0.3;
+    lamp.scale.z = 0.3;
 
-  light.color = g_local_color;
-  if (light.color.a == 0.0)
-    light.color.a = g_local_alpha;
+    lamp.color.r = r;
+    lamp.color.g = g;
+    lamp.color.b = b;
+    lamp.color.a = a;
 
-  g_local_waypoints_marker_array.markers.push_back(light);
+    g_local_waypoints_marker_array.markers.push_back(lamp);
+  };
+
+  // brightness settings
+  const float on_alpha = 1.0f;
+  const float off_alpha = 0.2f;
+
+  // which lamp is on?
+  const bool red_on = (g_current_traffic_light == TRAFFIC_LIGHT_RED);
+  const bool green_on = (g_current_traffic_light == TRAFFIC_LIGHT_GREEN);
+  // use yellow when we do not have explicit state (UNKNOWN)
+  const bool yellow_on = (g_current_traffic_light == TRAFFIC_LIGHT_UNKNOWN);
+
+  // layout: top = red, middle = yellow, bottom = green
+  // offsets relative to body center
+  const double dz_red = +0.35;
+  const double dz_yellow = 0.0;
+  const double dz_green = -0.35;
+
+  // red lamp (top)
+  makeLamp(1, dz_red, 1.0f, 0.0f, 0.0f, red_on ? on_alpha : off_alpha);
+
+  // yellow lamp (middle)
+  makeLamp(2, dz_yellow, 1.0f, 1.0f, 0.0f, yellow_on ? on_alpha : off_alpha);
+
+  // green lamp (bottom)
+  makeLamp(3, dz_green, 0.0f, 1.0f, 0.0f, green_on ? on_alpha : off_alpha);
 }
 
 void createLocalDirectionMarker(const autoware_msgs::Lane& lane_waypoint)
@@ -777,38 +802,7 @@ void createLocalStopReasonMarkers(const autoware_msgs::Lane& lane_waypoint)
 
 void lightCallback(const autoware_msgs::TrafficLightConstPtr& msg)
 {
-  std_msgs::ColorRGBA global_color;
-  global_color.a = g_global_alpha;
-
-  std_msgs::ColorRGBA local_color;
-  local_color.a = g_local_alpha;
-
-  switch (msg->traffic_light)
-  {
-    case TRAFFIC_LIGHT_RED:
-      global_color.r = 1.0;
-      _global_color = global_color;
-      local_color.r = 1.0;
-      g_local_color = local_color;
-      break;
-    case TRAFFIC_LIGHT_GREEN:
-      global_color.g = 1.0;
-      _global_color = global_color;
-      local_color.g = 1.0;
-      g_local_color = local_color;
-      break;
-    case TRAFFIC_LIGHT_UNKNOWN:
-      global_color.r = 1.0;
-      global_color.g = 1.0;
-      _global_color = global_color;
-      local_color.r = 1.0;
-      local_color.g = 1.0;
-      g_local_color = local_color;
-      break;
-    default:
-      ROS_ERROR("unknown traffic_light");
-      return;
-  }
+  g_current_traffic_light = msg->traffic_light;
 }
 
 void receiveAutoDetection(const autoware_msgs::TrafficLightConstPtr& msg)
@@ -845,13 +839,19 @@ void finalCallback(const autoware_msgs::LaneConstPtr& msg)
   g_local_waypoints_marker_array.markers.clear();
 
   // path at robot height
-  createLocalPathMarker(g_local_color, *msg);
+  std_msgs::ColorRGBA color;
+  color.r = 1.0;
+  color.g = 1.0;
+  color.b = 1.0;
+  color.a = 0.8;
+
+  createLocalPathMarker(color, *msg);
 
   // colored spheres
   createLocalPointMarker(*msg);
 
   // velocity visualization
-  createLocalWaypointVelocityMarker(g_local_color, *msg);
+  createLocalWaypointVelocityMarker(color, *msg);
 
   // indicator on top of the robot
   createLocalTrafficLightIndicatorMarker(*msg);
@@ -890,14 +890,6 @@ int main(int argc, char** argv)
 
   g_local_mark_pub = nh.advertise<visualization_msgs::MarkerArray>("local_waypoints_mark", 10, true);
   g_global_mark_pub = nh.advertise<visualization_msgs::MarkerArray>("global_waypoints_mark", 10, true);
-
-  // initialize path color
-  _initial_color.g = 0.7;
-  _initial_color.b = 1.0;
-  _global_color = _initial_color;
-  _global_color.a = g_global_alpha;
-  g_local_color = _initial_color;
-  g_local_color.a = g_local_alpha;
 
   ros::spin();
 }
