@@ -228,9 +228,18 @@ void createGlobalLaneArrayChangeFlagMarker(const autoware_msgs::LaneArray& lane_
                                        tmp_marker_array.markers.end());
 }
 
-void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA color, int closest_waypoint,
-                                       const autoware_msgs::Lane& lane_waypoint)
+void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA color, const autoware_msgs::Lane& lane_waypoint)
 {
+  // no lane = nothing to draw
+  if (lane_waypoint.waypoints.empty())
+    return;  // use closest waypoint if available, otherwise use the very first waypoint
+  int wp_index = _closest_waypoint;
+  if (wp_index < 0 || wp_index >= static_cast<int>(lane_waypoint.waypoints.size()))
+  {
+    wp_index = 0;  // fallback
+  }
+  const geometry_msgs::Pose& base_pose = lane_waypoint.waypoints[wp_index].pose.pose;
+
   // display by markers the velocity of each waypoint.
   visualization_msgs::Marker velocity;
   velocity.header.frame_id = "map";
@@ -248,7 +257,7 @@ void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA color, int closest_wa
     geometry_msgs::Point relative_p;
     relative_p.x = 0;
     relative_p.y = 0;
-    relative_p.z = 0.1;
+    relative_p.z = base_pose.position.z + 0.1;
     if (lane_waypoint.waypoints[i].twist.twist.linear.x > 0)
     {
       double velocity_scaled = std::max(1.0, 0.2 + lane_waypoint.waypoints[i].twist.twist.linear.x / 3.6);
@@ -576,49 +585,30 @@ void createLocalTrafficLightIndicatorMarker(const autoware_msgs::Lane& lane_wayp
 
 void createLocalDirectionMarker(const autoware_msgs::Lane& lane_waypoint)
 {
-  // no lane = nothing to draw
   if (lane_waypoint.waypoints.empty())
     return;
 
-  // use closest waypoint if available, otherwise use the very first waypoint
   int wp_index = _closest_waypoint;
   if (wp_index < 0 || wp_index >= static_cast<int>(lane_waypoint.waypoints.size()))
   {
-    wp_index = 0;  // fallback
+    wp_index = 0;
   }
 
   const auto& wp = lane_waypoint.waypoints[wp_index];
   const double v = wp.twist.twist.linear.x;
   const double stop_threshold_mps = 0.1;
 
-  if (std::fabs(v) < stop_threshold_mps)
-  {
-    // red sphere for stop
-    visualization_msgs::Marker stop_marker;
-    stop_marker.header.frame_id = "map";
-    stop_marker.header.stamp = ros::Time::now();
-    stop_marker.ns = "direction_indicator";
-    stop_marker.id = 0;
-    stop_marker.type = visualization_msgs::Marker::SPHERE;
-    stop_marker.action = visualization_msgs::Marker::ADD;
-    stop_marker.frame_locked = true;
+  // ============================================================
+  // Arrow parameters
+  // ============================================================
+  const double shaft_length = 1.0;     // shaft length
+  const double shaft_diameter = 0.10;  // shaft diameter
+  const double head_length = 0.45;     // head length
+  const double head_diameter = 0.3;    // head diameter
 
-    stop_marker.pose = wp.pose.pose;
-    stop_marker.pose.position.z += 1.6;
-
-    stop_marker.scale.x = 0.3;
-    stop_marker.scale.y = 0.3;
-    stop_marker.scale.z = 0.3;
-
-    stop_marker.color.r = 1.0;
-    stop_marker.color.g = 0.0;
-    stop_marker.color.b = 0.0;
-    stop_marker.color.a = 0.9;
-
-    g_local_waypoints_marker_array.markers.push_back(stop_marker);
-    return;
-  }
-
+  // ============================================================
+  // Create arrow marker (points mode)
+  // ============================================================
   visualization_msgs::Marker arrow;
   arrow.header.frame_id = "map";
   arrow.header.stamp = ros::Time::now();
@@ -628,38 +618,58 @@ void createLocalDirectionMarker(const autoware_msgs::Lane& lane_waypoint)
   arrow.action = visualization_msgs::Marker::ADD;
   arrow.frame_locked = true;
 
-  arrow.pose = wp.pose.pose;
-  arrow.pose.position.z += 1.6;
+  // base position
+  geometry_msgs::Point p0;
+  p0.x = wp.pose.pose.position.x;
+  p0.y = wp.pose.pose.position.y;
+  p0.z = wp.pose.pose.position.z + 1.6;
 
-  arrow.scale.x = 1.0;  // arrow length
-  arrow.scale.y = 0.2;
-  arrow.scale.z = 0.2;
+  geometry_msgs::Point p1 = p0;
+  double yaw = tf2::getYaw(wp.pose.pose.orientation);
 
-  if (v > 0.0)
+  p1.x += std::cos(yaw) * shaft_length;
+  p1.y += std::sin(yaw) * shaft_length;
+
+  // ============================================================
+  // Color & direction
+  // ============================================================
+  if (std::fabs(v) < stop_threshold_mps)
   {
-    // forward: green
+    // STOP → 薄い白（半透明）
+    arrow.color.r = 1.0;
+    arrow.color.g = 1.0;
+    arrow.color.b = 1.0;
+    arrow.color.a = 0.35;  // 透明度高めで“薄い白”
+  }
+  else if (v > 0.0)
+  {
+    // Forward → green
     arrow.color.r = 0.0;
     arrow.color.g = 1.0;
     arrow.color.b = 0.0;
-    arrow.color.a = 0.9;
+    arrow.color.a = 1.0;
   }
   else
   {
-    // backward: yellow + 180deg yaw
-    tf2::Quaternion q;
-    tf2::convert(arrow.pose.orientation, q);
-
-    tf2::Quaternion rot;
-    rot.setRPY(0, 0, M_PI);  // 180 degrees
-    q *= rot;
-    q.normalize();
-    tf2::convert(q, arrow.pose.orientation);
-
+    // Backward → yellow + reverse direction
     arrow.color.r = 1.0;
     arrow.color.g = 1.0;
     arrow.color.b = 0.0;
-    arrow.color.a = 0.9;
+    arrow.color.a = 1.0;
+
+    // reverse vector
+    std::swap(p0, p1);
   }
+
+  arrow.points.push_back(p0);
+  arrow.points.push_back(p1);
+
+  // ============================================================
+  // scale in points-mode
+  // ============================================================
+  arrow.scale.x = shaft_diameter;
+  arrow.scale.y = head_diameter;
+  arrow.scale.z = head_length;
 
   g_local_waypoints_marker_array.markers.push_back(arrow);
 }
