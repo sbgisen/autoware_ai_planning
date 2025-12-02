@@ -232,11 +232,21 @@ void createGlobalLaneArrayChangeFlagMarker(const autoware_msgs::LaneArray& lane_
                                        tmp_marker_array.markers.end());
 }
 
-void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA base_color, int closest_waypoint,
-                                       const autoware_msgs::Lane& lane_waypoint)
+void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA base_color, const autoware_msgs::Lane& lane_waypoint)
 {
+  // no lane = nothing to draw
   if (lane_waypoint.waypoints.empty())
     return;
+
+  // use closest waypoint if available, otherwise use the very first waypoint
+  int wp_index = _closest_waypoint;
+  if (wp_index < 0 || wp_index >= static_cast<int>(lane_waypoint.waypoints.size()))
+  {
+    wp_index = 0;  // fallback
+  }
+
+  const geometry_msgs::Pose& base_pose = lane_waypoint.waypoints[wp_index].pose.pose;
+
   visualization_msgs::Marker bars;
   bars.header.frame_id = "map";
   bars.header.stamp = ros::Time::now();
@@ -250,7 +260,7 @@ void createLocalWaypointVelocityMarker(std_msgs::ColorRGBA base_color, int close
   bars.color = base_color;
   bars.color.a = 0.3;  // semi-transparent
 
-  const double base_z = lane_waypoint.waypoints.front().pose.pose.position.z;
+  const double base_z = base_pose.position.z;
   const double scale = 0.05;  // [m per km/h], adjust as you like
 
   std::vector<double> speeds_kmph;
@@ -594,10 +604,18 @@ void createLocalTrafficLightIndicatorMarker(const autoware_msgs::Lane& lane_wayp
 
 void createLocalDirectionMarker(const autoware_msgs::Lane& lane_waypoint)
 {
-  if (_closest_waypoint < 0 || _closest_waypoint >= static_cast<int>(lane_waypoint.waypoints.size()))
+  // no lane = nothing to draw
+  if (lane_waypoint.waypoints.empty())
     return;
 
-  const auto& wp = lane_waypoint.waypoints[_closest_waypoint];
+  // use closest waypoint if available, otherwise use the very first waypoint
+  int wp_index = _closest_waypoint;
+  if (wp_index < 0 || wp_index >= static_cast<int>(lane_waypoint.waypoints.size()))
+  {
+    wp_index = 0;  // fallback
+  }
+
+  const auto& wp = lane_waypoint.waypoints[wp_index];
   const double v = wp.twist.twist.linear.x;
   const double stop_threshold_mps = 0.1;
 
@@ -833,8 +851,7 @@ void finalCallback(const autoware_msgs::LaneConstPtr& msg)
   createLocalPointMarker(*msg);
 
   // velocity visualization
-  if (_closest_waypoint != -1)
-    createLocalWaypointVelocityMarker(g_local_color, _closest_waypoint, *msg);
+  createLocalWaypointVelocityMarker(g_local_color, *msg);
 
   // indicator on top of the robot
   createLocalTrafficLightIndicatorMarker(*msg);
