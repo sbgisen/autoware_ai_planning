@@ -436,15 +436,15 @@ void createLocalPointMarker(const autoware_msgs::Lane& lane_waypoint)
   lane_waypoint_marker.header.stamp = ros::Time::now();
   lane_waypoint_marker.ns = "local_point_marker";
   lane_waypoint_marker.id = 0;
-  lane_waypoint_marker.type = visualization_msgs::Marker::CUBE_LIST;
   lane_waypoint_marker.action = visualization_msgs::Marker::ADD;
-  lane_waypoint_marker.scale.x = 0.1;
-  lane_waypoint_marker.scale.y = 0.1;
-  lane_waypoint_marker.scale.z = 0.1;
-  lane_waypoint_marker.color.r = 0.6;
-  lane_waypoint_marker.color.g = 0.6;
-  lane_waypoint_marker.color.b = 0.6;
-  lane_waypoint_marker.color.a = 1.0;
+  lane_waypoint_marker.type = visualization_msgs::Marker::SPHERE_LIST;
+  lane_waypoint_marker.scale.x = 0.12;
+  lane_waypoint_marker.scale.y = 0.12;
+  lane_waypoint_marker.scale.z = 0.12;
+  lane_waypoint_marker.color.r = 1.0;
+  lane_waypoint_marker.color.g = 1.0;
+  lane_waypoint_marker.color.b = 1.0;
+  lane_waypoint_marker.color.a = 0.5;
   lane_waypoint_marker.frame_locked = true;
   if (lane_waypoint.waypoints.empty())
     return;
