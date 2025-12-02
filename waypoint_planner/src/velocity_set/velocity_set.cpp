@@ -510,7 +510,7 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
         (detection_result == EControl::STOP) ? vs_info.getStopDistanceObstacle() : vs_info.getStopDistanceStopline();
     int stop_first_index = calcWaypointIndexReverse(vs_path->getPrevWaypoints(), obstacle_waypoint, stop_distance);
     // change waypoints to stop by the stop_first_index
-    vs_path->changeWaypointsForStopping(stop_first_index, closest_waypoint, deceleration);
+    vs_path->changeWaypointsForStopping(stop_first_index, obstacle_waypoint + 4, closest_waypoint, deceleration);
   }
   else if (detection_result == EControl::DECELERATE)  // DECELERATE for obstacles
   {
@@ -518,7 +518,7 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
     deceleration = vs_info.getDecelerationObstacle();
     double decel_distance = vs_info.getDecelerationDistanceObstacle();
     int decel_first_index = calcWaypointIndexReverse(vs_path->getPrevWaypoints(), obstacle_waypoint, decel_distance);
-    vs_path->changeWaypointsForDeceleration(decel_first_index, obstacle_waypoint, closest_waypoint,
+    vs_path->changeWaypointsForDeceleration(decel_first_index, obstacle_waypoint + 4, closest_waypoint,
                                             vs_info.getDecelerationObstacle());
   }
   else

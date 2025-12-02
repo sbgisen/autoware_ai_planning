@@ -40,7 +40,7 @@ public:
   ~VelocitySetPath() = default;
 
   double calcChangedVelocity(const double& current_vel, const double& accel, const std::array<int, 2>& range) const;
-  void changeWaypointsForStopping(int stop_first_index, int closest_waypoint, double deceleration);
+  void changeWaypointsForStopping(int stop_first_index, int stop_last_index, int closest_waypoint, double deceleration);
   void avoidSuddenDeceleration(double velocity_change_limit, double deceleration, int closest_waypoint);
   void avoidSuddenAcceleration(double accel_limit, int closest_waypoint);
   void changeWaypointsForDeceleration(int decel_first_index, int decel_last_index, int closest_waypoint,
