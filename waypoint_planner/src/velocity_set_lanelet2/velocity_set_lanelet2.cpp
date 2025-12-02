@@ -33,6 +33,7 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include "tf/transform_datatypes.h"
 
 #include <waypoint_planner/velocity_set/libvelocity_set.h>
 #include <waypoint_planner/velocity_set/velocity_set_info.h>
@@ -43,6 +44,266 @@ constexpr int LOOP_RATE = 10;
 static lanelet::LaneletMapPtr g_lanelet_map;
 static bool g_loaded_lanelet_map;
 lanelet::ConstLanelets g_crosswalk_lanelets;
+
+enum class EStopReason
+{
+  NONE = 0,
+  OBSTACLE = 1,          // Stopped because of detected obstacle or stopline
+  ORIGINAL_WAYPOINT = 2  // Stopped because original waypoint velocity is zero
+};
+
+geometry_msgs::Pose createSymbolPoseBehindRobot(const VelocitySetInfo& vs_info)
+{
+  geometry_msgs::Pose base_pose = vs_info.getControlPose().pose;
+  geometry_msgs::Pose symbol_pose;
+
+  // Position: slightly behind and above the robot
+  double yaw = tf::getYaw(base_pose.orientation);
+  const double back_offset = 1.0;    // meters behind the robot
+  const double height_offset = 2.0;  // meters above the robot
+
+  symbol_pose.position.x = base_pose.position.x - back_offset * std::cos(yaw);
+  symbol_pose.position.y = base_pose.position.y - back_offset * std::sin(yaw);
+  symbol_pose.position.z = base_pose.position.z + height_offset;
+
+  // Orientation: face toward the rear of the robot
+  double facing_yaw = yaw;
+  double facing_pitch = -M_PI / 2.0;
+  symbol_pose.orientation = tf::createQuaternionMsgFromRollPitchYaw(0.0, facing_pitch, facing_yaw);
+
+  return symbol_pose;
+}
+void fillObstacleStopSymbolMarkers(const geometry_msgs::Pose& symbol_pose, visualization_msgs::MarkerArray* array)
+{
+  const std::string ns = "stop_reason";
+
+  visualization_msgs::Marker base;
+  base.header.frame_id = "map";
+  base.header.stamp = ros::Time::now();
+  base.ns = ns;
+  base.lifetime = ros::Duration(1.0);
+  base.frame_locked = true;
+  base.pose = symbol_pose;
+
+  const double outer_radius = 0.9;
+  const double middle_radius = outer_radius * 0.85;
+  const double inner_radius = middle_radius * 0.6;
+
+  // --- Outer white circle ---
+  visualization_msgs::Marker outer = base;
+  outer.id = 0;
+  outer.type = visualization_msgs::Marker::CYLINDER;
+  outer.action = visualization_msgs::Marker::ADD;
+  outer.scale.x = outer_radius * 2.0;
+  outer.scale.y = outer_radius * 2.0;
+  outer.scale.z = 0.04;
+  outer.color.r = 1.0;
+  outer.color.g = 1.0;
+  outer.color.b = 1.0;
+  outer.color.a = 1.0;
+  array->markers.push_back(outer);
+
+  // --- Middle red circle ---
+  visualization_msgs::Marker middle = base;
+  middle.id = 1;
+  middle.type = visualization_msgs::Marker::CYLINDER;
+  middle.action = visualization_msgs::Marker::ADD;
+  middle.scale.x = middle_radius * 2.0;
+  middle.scale.y = middle_radius * 2.0;
+  middle.scale.z = 0.05;
+  middle.pose.position.z += 0.01;
+  middle.color.r = 1.0;
+  middle.color.g = 0.0;
+  middle.color.b = 0.0;
+  middle.color.a = 1.0;
+  array->markers.push_back(middle);
+
+  // --- Inner white circle (creates the red ring) ---
+  visualization_msgs::Marker inner = base;
+  inner.id = 2;
+  inner.type = visualization_msgs::Marker::CYLINDER;
+  inner.action = visualization_msgs::Marker::ADD;
+  inner.scale.x = inner_radius * 2.0;
+  inner.scale.y = inner_radius * 2.0;
+  inner.scale.z = 0.06;
+  inner.pose.position.z += 0.02;
+  inner.color.r = 1.0;
+  inner.color.g = 1.0;
+  inner.color.b = 1.0;
+  inner.color.a = 1.0;
+  array->markers.push_back(inner);
+
+  // --- Cross (X) built from two rectangular boxes ---
+  const double bar_length = middle_radius * 1.8;  // so that ends reach the red circle
+  const double bar_width = middle_radius * 0.3;
+  const double bar_thickness = 0.08;
+
+  // Get base roll pitch yaw
+  double base_roll, base_pitch, base_yaw;
+  tf::Quaternion base_q;
+  tf::quaternionMsgToTF(symbol_pose.orientation, base_q);
+  tf::Matrix3x3(base_q).getRPY(base_roll, base_pitch, base_yaw);
+
+  for (int i = 0; i < 2; ++i)
+  {
+    double angle = (i == 0) ? M_PI_4 : -M_PI_4;
+
+    visualization_msgs::Marker bar = base;
+    bar.id = 3 + i;
+    bar.type = visualization_msgs::Marker::CUBE;
+    bar.action = visualization_msgs::Marker::ADD;
+    bar.scale.x = bar_length;
+    bar.scale.y = bar_width;
+    bar.scale.z = bar_thickness;
+    bar.pose.position.z += 0.04;  // above circles
+    bar.color.r = 1.0;
+    bar.color.g = 0.0;
+    bar.color.b = 0.0;
+    bar.color.a = 1.0;
+
+    tf::Quaternion bar_q;
+    bar_q.setRPY(0, 0, angle);
+    bar_q = base_q * bar_q;
+    tf::quaternionTFToMsg(bar_q, bar.pose.orientation);
+
+    array->markers.push_back(bar);
+  }
+}
+
+void fillWaypointStopSymbolMarkers(const geometry_msgs::Pose& symbol_pose, visualization_msgs::MarkerArray* array)
+{
+  const std::string ns = "stop_reason";
+  const double base_size = 1.0;  // size of outer square
+
+  visualization_msgs::Marker base;
+  base.header.frame_id = "map";
+  base.header.stamp = ros::Time::now();
+  base.ns = ns;
+  base.lifetime = ros::Duration(1.0);
+  base.frame_locked = true;
+  base.pose = symbol_pose;
+
+  // --- Outer white square ---
+  visualization_msgs::Marker outer = base;
+  outer.id = 10;
+  outer.type = visualization_msgs::Marker::CUBE;
+  outer.action = visualization_msgs::Marker::ADD;
+  outer.scale.x = base_size;
+  outer.scale.y = base_size;
+  outer.scale.z = 0.05;  // thin plate
+  outer.color.r = 1.0;
+  outer.color.g = 1.0;
+  outer.color.b = 1.0;
+  outer.color.a = 1.0;
+  array->markers.push_back(outer);
+
+  // --- Inner blue square (with margin from outer) ---
+  const double inner_margin_ratio = 0.2;  // 20% margin
+  visualization_msgs::Marker inner = base;
+  inner.id = 11;
+  inner.type = visualization_msgs::Marker::CUBE;
+  inner.action = visualization_msgs::Marker::ADD;
+  inner.scale.x = base_size * (1.0 - inner_margin_ratio);
+  inner.scale.y = base_size * (1.0 - inner_margin_ratio);
+  inner.scale.z = 0.06;  // slightly above outer
+  inner.pose.position.z += 0.01;
+  inner.color.r = 0.0;
+  inner.color.g = 0.2;
+  inner.color.b = 1.0;  // blue
+  inner.color.a = 1.0;
+  array->markers.push_back(inner);
+
+  // --- White horizontal rectangle inside blue square ---
+  const double bar_margin_ratio = 0.3;  // margin from blue edges
+  visualization_msgs::Marker bar = base;
+  bar.id = 12;
+  bar.type = visualization_msgs::Marker::CUBE;
+  bar.action = visualization_msgs::Marker::ADD;
+  bar.scale.x = base_size * 0.25;                      // height
+  bar.scale.y = base_size * (1.0 - bar_margin_ratio);  // width
+  bar.scale.z = 0.07;                                  // thickness
+  bar.pose.position.z += 0.02;
+  bar.color.r = 1.0;
+  bar.color.g = 1.0;
+  bar.color.b = 1.0;
+  bar.color.a = 1.0;
+  array->markers.push_back(bar);
+}
+
+void publishStopReasonMarkers(const VelocitySetInfo& vs_info, const VelocitySetPath& vs_path,
+                              const EControl& detection_result, const int closest_waypoint,
+                              const ros::Publisher& marker_pub)
+{
+  visualization_msgs::MarkerArray array;
+  static bool prev_visible = false;
+
+  // Determine if the robot is almost stopped
+  const double stop_vel_threshold = 0.1;  // [m/s]
+  bool is_stopped = std::fabs(vs_path.getCurrentVelocity()) < stop_vel_threshold;
+
+  EStopReason reason = EStopReason::NONE;
+
+  if (is_stopped)
+  {
+    if (detection_result == EControl::STOP || detection_result == EControl::STOPLINE)
+    {
+      reason = EStopReason::OBSTACLE;
+    }
+    else
+    {
+      // Check if original waypoints around the current index have zero velocity
+      const autoware_msgs::Lane lane = vs_path.getPrevWaypoints();
+      if (closest_waypoint >= 0 && closest_waypoint < static_cast<int>(lane.waypoints.size()))
+      {
+        const int search_range = 10;
+        for (int i = closest_waypoint;
+             i < std::min(closest_waypoint + search_range, static_cast<int>(lane.waypoints.size())); ++i)
+        {
+          if (std::fabs(lane.waypoints[i].twist.twist.linear.x) < 0.01)
+          {
+            reason = EStopReason::ORIGINAL_WAYPOINT;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (reason == EStopReason::NONE)
+  {
+    // Delete previous markers if they were visible
+    if (prev_visible)
+    {
+      for (int id : { 0, 1, 2, 10, 11, 12 })
+      {
+        visualization_msgs::Marker del;
+        del.header.frame_id = "map";
+        del.header.stamp = ros::Time::now();
+        del.ns = "stop_reason";
+        del.id = id;
+        del.action = visualization_msgs::Marker::DELETE;
+        array.markers.push_back(del);
+      }
+      marker_pub.publish(array);
+      prev_visible = false;
+    }
+    return;
+  }
+
+  geometry_msgs::Pose symbol_pose = createSymbolPoseBehindRobot(vs_info);
+
+  if (reason == EStopReason::OBSTACLE)
+  {
+    fillObstacleStopSymbolMarkers(symbol_pose, &array);
+  }
+  else if (reason == EStopReason::ORIGINAL_WAYPOINT)
+  {
+    fillWaypointStopSymbolMarkers(symbol_pose, &array);
+  }
+
+  marker_pub.publish(array);
+  prev_visible = true;
+}
 
 // set color according to given obstacle
 void obstacleColorByKind(const EControl kind, std_msgs::ColorRGBA* color, const double alpha = 0.5)
@@ -91,7 +352,7 @@ void displayObstacle(const EControl& kind, const ObstaclePoints& obstacle_points
   marker.id = 0;
   marker.type = visualization_msgs::Marker::CYLINDER;
   marker.action = visualization_msgs::Marker::ADD;
-  marker.lifetime = ros::Duration(10.0);
+  marker.lifetime = ros::Duration(1.0);
   marker.pose.orientation = tf::createQuaternionMsgFromYaw(0.0);
 
   static geometry_msgs::Point prev_obstacle_point;
@@ -1069,7 +1330,7 @@ void displayDetectionRange(const VelocitySetInfo& vs_info, const autoware_msgs::
   crosswalk_marker.id = 0;
   crosswalk_marker.type = visualization_msgs::Marker::SPHERE_LIST;
   crosswalk_marker.action = visualization_msgs::Marker::ADD;
-  crosswalk_marker.lifetime = ros::Duration(10.0);
+  crosswalk_marker.lifetime = ros::Duration(1.0);
   crosswalk_marker.pose.orientation = tf::createQuaternionMsgFromYaw(0.0);
   waypoint_marker_stop = crosswalk_marker;
   waypoint_marker_decelerate = crosswalk_marker;
@@ -1340,6 +1601,7 @@ int main(int argc, char** argv)
   ros::Publisher obstacle_pub = rosnode.advertise<visualization_msgs::Marker>("obstacle", 1);
   ros::Publisher obstacle_waypoint_pub = rosnode.advertise<std_msgs::Int32>("obstacle_waypoint", 1, true);
   ros::Publisher stopline_waypoint_pub = rosnode.advertise<std_msgs::Int32>("stopline_waypoint", 1, true);
+  ros::Publisher stop_reason_marker_pub = rosnode.advertise<visualization_msgs::MarkerArray>("stop_reason_markers", 1);
 
   ros::Publisher final_waypoints_pub;
   final_waypoints_pub = rosnode.advertise<autoware_msgs::Lane>("final_waypoints", 1, true);
@@ -1390,6 +1652,9 @@ int main(int argc, char** argv)
                           stop_search_distance, disable_side_deceleration);
 
     changeWaypoints(vs_info, detection_result, closest_waypoint, obstacle_waypoint, final_waypoints_pub, &vs_path);
+
+    // Publish stop-reason symbol above and behind the robot
+    publishStopReasonMarkers(vs_info, vs_path, detection_result, closest_waypoint, stop_reason_marker_pub);
 
     vs_info.clearPoints();
 
