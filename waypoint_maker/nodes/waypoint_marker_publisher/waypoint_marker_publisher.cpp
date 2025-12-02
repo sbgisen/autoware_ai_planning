@@ -414,12 +414,18 @@ void createLocalPathMarker(std_msgs::ColorRGBA color, const autoware_msgs::Lane&
   lane_waypoint_marker.color = color;
   lane_waypoint_marker.frame_locked = true;
 
-  for (unsigned int i = 0; i < lane_waypoint.waypoints.size(); i++)
+  if (lane_waypoint.waypoints.empty())
+    return;
+
+  const double base_z = lane_waypoint.waypoints.front().pose.pose.position.z;
+
+  for (const auto& wp : lane_waypoint.waypoints)
   {
-    geometry_msgs::Point point;
-    point = lane_waypoint.waypoints[i].pose.pose.position;
+    geometry_msgs::Point point = wp.pose.pose.position;
+    point.z = base_z;  // align with robot height
     lane_waypoint_marker.points.push_back(point);
   }
+
   g_local_waypoints_marker_array.markers.push_back(lane_waypoint_marker);
 }
 
@@ -440,11 +446,15 @@ void createLocalPointMarker(const autoware_msgs::Lane& lane_waypoint)
   lane_waypoint_marker.color.b = 0.6;
   lane_waypoint_marker.color.a = 1.0;
   lane_waypoint_marker.frame_locked = true;
+  if (lane_waypoint.waypoints.empty())
+    return;
+  const double base_z = lane_waypoint.waypoints.front().pose.pose.position.z;
 
   for (unsigned int i = 0; i < lane_waypoint.waypoints.size(); i++)
   {
     geometry_msgs::Point point;
     point = lane_waypoint.waypoints[i].pose.pose.position;
+    point.z = base_z;  // align with robot height
     lane_waypoint_marker.points.push_back(point);
   }
   g_local_waypoints_marker_array.markers.push_back(lane_waypoint_marker);
