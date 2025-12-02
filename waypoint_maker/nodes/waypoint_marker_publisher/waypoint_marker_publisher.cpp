@@ -539,6 +539,88 @@ void createLocalTrafficLightIndicatorMarker(const autoware_msgs::Lane& lane_wayp
   g_local_waypoints_marker_array.markers.push_back(light);
 }
 
+void createLocalDirectionMarker(const autoware_msgs::Lane& lane_waypoint)
+{
+  if (_closest_waypoint < 0 || _closest_waypoint >= static_cast<int>(lane_waypoint.waypoints.size()))
+    return;
+
+  const auto& wp = lane_waypoint.waypoints[_closest_waypoint];
+  const double v = wp.twist.twist.linear.x;
+  const double stop_threshold_mps = 0.1;
+
+  if (std::fabs(v) < stop_threshold_mps)
+  {
+    // red sphere for stop
+    visualization_msgs::Marker stop_marker;
+    stop_marker.header.frame_id = "map";
+    stop_marker.header.stamp = ros::Time::now();
+    stop_marker.ns = "direction_indicator";
+    stop_marker.id = 0;
+    stop_marker.type = visualization_msgs::Marker::SPHERE;
+    stop_marker.action = visualization_msgs::Marker::ADD;
+    stop_marker.frame_locked = true;
+
+    stop_marker.pose = wp.pose.pose;
+    stop_marker.pose.position.z += 1.6;
+
+    stop_marker.scale.x = 0.3;
+    stop_marker.scale.y = 0.3;
+    stop_marker.scale.z = 0.3;
+
+    stop_marker.color.r = 1.0;
+    stop_marker.color.g = 0.0;
+    stop_marker.color.b = 0.0;
+    stop_marker.color.a = 0.9;
+
+    g_local_waypoints_marker_array.markers.push_back(stop_marker);
+    return;
+  }
+
+  visualization_msgs::Marker arrow;
+  arrow.header.frame_id = "map";
+  arrow.header.stamp = ros::Time::now();
+  arrow.ns = "direction_indicator";
+  arrow.id = 1;
+  arrow.type = visualization_msgs::Marker::ARROW;
+  arrow.action = visualization_msgs::Marker::ADD;
+  arrow.frame_locked = true;
+
+  arrow.pose = wp.pose.pose;
+  arrow.pose.position.z += 1.6;
+
+  arrow.scale.x = 1.0;  // arrow length
+  arrow.scale.y = 0.2;
+  arrow.scale.z = 0.2;
+
+  if (v > 0.0)
+  {
+    // forward: green
+    arrow.color.r = 0.0;
+    arrow.color.g = 1.0;
+    arrow.color.b = 0.0;
+    arrow.color.a = 0.9;
+  }
+  else
+  {
+    // backward: yellow + 180deg yaw
+    tf2::Quaternion q;
+    tf2::convert(arrow.pose.orientation, q);
+
+    tf2::Quaternion rot;
+    rot.setRPY(0, 0, M_PI);  // 180 degrees
+    q *= rot;
+    q.normalize();
+    tf2::convert(q, arrow.pose.orientation);
+
+    arrow.color.r = 1.0;
+    arrow.color.g = 1.0;
+    arrow.color.b = 0.0;
+    arrow.color.a = 0.9;
+  }
+
+  g_local_waypoints_marker_array.markers.push_back(arrow);
+}
+
 void lightCallback(const autoware_msgs::TrafficLightConstPtr& msg)
 {
   std_msgs::ColorRGBA global_color;
@@ -620,6 +702,7 @@ void finalCallback(const autoware_msgs::LaneConstPtr& msg)
 
   // indicator on top of the robot
   createLocalTrafficLightIndicatorMarker(*msg);
+  createLocalDirectionMarker(*msg);
 
   setLifetime(0.5, &g_local_waypoints_marker_array);
   publishMarkerArray(g_local_waypoints_marker_array, g_local_mark_pub);
