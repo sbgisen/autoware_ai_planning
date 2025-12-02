@@ -87,10 +87,12 @@ void displayObstacle(const EControl& kind, const ObstaclePoints& obstacle_points
   visualization_msgs::Marker marker;
   marker.header.frame_id = "map";
   marker.header.stamp = ros::Time();
-  marker.ns = "my_namespace";
+  marker.ns = "obstacle";
   marker.id = 0;
-  marker.type = visualization_msgs::Marker::CUBE;
+  marker.type = visualization_msgs::Marker::CYLINDER;
   marker.action = visualization_msgs::Marker::ADD;
+  marker.lifetime = ros::Duration(10.0);
+  marker.pose.orientation = tf::createQuaternionMsgFromYaw(0.0);
 
   static geometry_msgs::Point prev_obstacle_point;
   if (kind == EControl::STOP || kind == EControl::STOPLINE || kind == EControl::DECELERATE)
@@ -102,13 +104,10 @@ void displayObstacle(const EControl& kind, const ObstaclePoints& obstacle_points
   {
     marker.pose.position = prev_obstacle_point;
   }
-  geometry_msgs::Quaternion quat = tf::createQuaternionMsgFromYaw(0.0);
-  marker.pose.orientation = quat;
 
   marker.scale.x = 1.0;
   marker.scale.y = 1.0;
   marker.scale.z = 2.0;
-  marker.lifetime = ros::Duration(0.1);
   marker.frame_locked = true;
   obstacleColorByKind(kind, &marker.color, 0.7);
 
@@ -1066,9 +1065,12 @@ void displayDetectionRange(const VelocitySetInfo& vs_info, const autoware_msgs::
   visualization_msgs::Marker stop_line;
   crosswalk_marker.header.frame_id = "map";
   crosswalk_marker.header.stamp = ros::Time();
+  crosswalk_marker.ns = "crosswalk";
   crosswalk_marker.id = 0;
   crosswalk_marker.type = visualization_msgs::Marker::SPHERE_LIST;
   crosswalk_marker.action = visualization_msgs::Marker::ADD;
+  crosswalk_marker.lifetime = ros::Duration(10.0);
+  crosswalk_marker.pose.orientation = tf::createQuaternionMsgFromYaw(0.0);
   waypoint_marker_stop = crosswalk_marker;
   waypoint_marker_decelerate = crosswalk_marker;
   stop_line = crosswalk_marker;
@@ -1110,7 +1112,6 @@ void displayDetectionRange(const VelocitySetInfo& vs_info, const autoware_msgs::
   stop_line.scale.x = 0.1;
   stop_line.scale.y = 15.0;
   stop_line.scale.z = 2.0;
-  stop_line.lifetime = ros::Duration(0.1);
   stop_line.frame_locked = true;
   obstacleColorByKind(kind, &stop_line.color, 0.3);
 
