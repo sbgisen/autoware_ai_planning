@@ -1610,7 +1610,7 @@ int main(int argc, char** argv)
   private_rosnode.param<bool>("use_crosswalk_detection", use_crosswalk_detection, true);
   private_rosnode.param<bool>("enable_multiple_crosswalk_detection", enable_multiple_crosswalk_detection, true);
   private_rosnode.param<bool>("enablePlannerDynamicSwitch", enablePlannerDynamicSwitch, false);
-  private_rosnode.param<bool>("disable_side_deceleration", disable_side_deceleration, true);
+  private_rosnode.param<bool>("disable_side_deceleration", disable_side_deceleration, false);
   private_rosnode.param<bool>("disable_back_collision_check", disable_back_collision_check, false);
   private_rosnode.param<std::string>("points_topic", points_topic, "points_lanes");
   private_rosnode.param<int>("deceleration_search_distance", deceleration_search_distance, 30);
