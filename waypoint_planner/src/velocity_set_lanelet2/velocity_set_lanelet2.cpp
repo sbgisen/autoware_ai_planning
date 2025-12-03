@@ -474,7 +474,8 @@ EControl crossWalkDetection(const VelocitySetInfo& vs_info, const pcl::PointClou
 
 bool isPointInRectCurrent2Waypoint(const tf::Vector3 vec_robot_to_point, const geometry_msgs::Pose goal_pose_in_robot,
                                    const double robot_length, const double robot_width, const double robot_base_to_rear,
-                                   const double margin, const double max_search_range)
+                                   const double margin, const double max_search_range,
+                                   const bool disable_back_collision_check)
 {
   constexpr double EPS = 1e-4;
 
@@ -500,6 +501,8 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 vec_robot_to_point, const g
     if ((point_is_in_front && !goal_is_in_front) || (!point_is_in_front && goal_is_in_front))
       return false;
   }
+  if (disable_back_collision_check && move_forward && !point_is_in_front)
+    return false;
 
   // --- Collision check at the start pose (robot local rectangle)
   if (vec_robot_to_point.x() > -robot_base_to_rear - margin &&
@@ -641,7 +644,7 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 vec_robot_to_point, const g
 bool isPointInRectWaypoint2Waypoint(const tf::Vector3 vec_robot_to_point, const geometry_msgs::Pose start_pose_in_robot,
                                     const geometry_msgs::Pose goal_pose_in_robot, const double robot_length,
                                     const double robot_width, const double robot_base_to_rear, const double margin,
-                                    const double max_search_range)
+                                    const double max_search_range, const bool disable_back_collision_check)
 {
   constexpr double EPS = 1e-4;
 
@@ -682,6 +685,8 @@ bool isPointInRectWaypoint2Waypoint(const tf::Vector3 vec_robot_to_point, const 
     if ((point_is_in_front && !goal_is_in_front) || (!point_is_in_front && goal_is_in_front))
       return false;
   }
+  if (disable_back_collision_check && move_forward && !point_is_in_front)
+    return false;
 
   // --- Collision check at the start pose (start local rectangle)
   if (vec_start_to_point.x() > -robot_base_to_rear - margin &&
@@ -839,7 +844,8 @@ bool isPointInRectWaypoint2Waypoint(const tf::Vector3 vec_robot_to_point, const 
 }
 
 bool isPointInCurcleCurrent2Waypoint(tf::Vector3 robot2point, const geometry_msgs::Pose robot2goal_pose,
-                                     const double robot_radius, const double max_search_range)
+                                     const double robot_radius, const double max_search_range,
+                                     const bool disable_back_collision_check)
 {
   constexpr double epsilon = 1e-4;  // near-zero guard
   bool point_forward = (robot2point.x() >= 0) ? true : false;
@@ -851,6 +857,8 @@ bool isPointInCurcleCurrent2Waypoint(tf::Vector3 robot2point, const geometry_msg
 
   // The robot can move in the direction away from the obstacle
   if ((point_forward && !move_forward) || (!point_forward && move_forward))
+    return false;
+  if (disable_back_collision_check && move_forward && !point_forward)
     return false;
 
   // Start pose collision detection
@@ -931,7 +939,7 @@ bool isPointInCurcleCurrent2Waypoint(tf::Vector3 robot2point, const geometry_msg
 
 bool isPointInCurcleWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_msgs::Pose robot2start_pose,
                                       const geometry_msgs::Pose robot2goal_pose, const double robot_radius,
-                                      const double max_search_range)
+                                      const double max_search_range, const bool disable_back_collision_check)
 {
   constexpr double epsilon = 1e-4;  // near-zero guard
   // Check if the point is in the search range
@@ -956,6 +964,8 @@ bool isPointInCurcleWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_ms
 
   // The robot can move in the direction away from the obstacle
   if ((point_forward && !move_forward) || (!point_forward && move_forward))
+    return false;
+  if (disable_back_collision_check && move_forward && !point_forward)
     return false;
 
   // Start pose collision detection
@@ -1039,7 +1049,8 @@ bool isPointInCurcleWaypoint2Waypoint(tf::Vector3 robot2point, const geometry_ms
 int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl::PointXYZ>& points,
                        const int closest_waypoint, int detection_waypoint, const autoware_msgs::Lane& lane,
                        const lanelet::ConstLanelets& closest_crosswalks, ObstaclePoints* obstacle_points,
-                       EObstacleType* obstacle_type, const int stop_search_distance)
+                       EObstacleType* obstacle_type, const int stop_search_distance,
+                       const bool disable_back_collision_check)
 {
   int stop_obstacle_waypoint = -1;
   *obstacle_type = EObstacleType::NONE;
@@ -1103,17 +1114,19 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
         double robot_shape_margin = std::max(0.0, (vs_info.getStopRange() - vs_info.getRobotWidth() * 0.5));
         if (i == closest_waypoint)
         {
-          in_collision = isPointInRectCurrent2Waypoint(point_vector, waypoint_pose, vs_info.getRobotLength(),
-                                                       vs_info.getRobotWidth(), vs_info.getRobotBase2Back(),
-                                                       robot_shape_margin, vs_info.getMaxSearchRange());
+          in_collision =
+              isPointInRectCurrent2Waypoint(point_vector, waypoint_pose, vs_info.getRobotLength(),
+                                            vs_info.getRobotWidth(), vs_info.getRobotBase2Back(), robot_shape_margin,
+                                            vs_info.getMaxSearchRange(), disable_back_collision_check);
         }
         if (i < static_cast<int>(lane.waypoints.size()) - 1 && !in_collision)
         {
           geometry_msgs::Pose next_waypoint_pose = getRelativePose(current_pose, lane.waypoints[i + 1].pose.pose);
           next_waypoint_pose.position.z = 0;
-          in_collision = isPointInRectWaypoint2Waypoint(
-              point_vector, waypoint_pose, next_waypoint_pose, vs_info.getRobotLength(), vs_info.getRobotWidth(),
-              vs_info.getRobotBase2Back(), robot_shape_margin, vs_info.getMaxSearchRange());
+          in_collision =
+              isPointInRectWaypoint2Waypoint(point_vector, waypoint_pose, next_waypoint_pose, vs_info.getRobotLength(),
+                                             vs_info.getRobotWidth(), vs_info.getRobotBase2Back(), robot_shape_margin,
+                                             vs_info.getMaxSearchRange(), disable_back_collision_check);
         }
       }
       else
@@ -1121,14 +1134,15 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
         if (i == closest_waypoint)
         {
           in_collision = isPointInCurcleCurrent2Waypoint(point_vector, waypoint_pose, vs_info.getStopRange(),
-                                                         vs_info.getMaxSearchRange());
+                                                         vs_info.getMaxSearchRange(), disable_back_collision_check);
         }
         if (i < static_cast<int>(lane.waypoints.size()) - 1 && !in_collision)
         {
           geometry_msgs::Pose next_waypoint_pose = getRelativePose(current_pose, lane.waypoints[i + 1].pose.pose);
           next_waypoint_pose.position.z = 0;
-          in_collision = isPointInCurcleWaypoint2Waypoint(point_vector, waypoint_pose, next_waypoint_pose,
-                                                          vs_info.getStopRange(), vs_info.getMaxSearchRange());
+          in_collision =
+              isPointInCurcleWaypoint2Waypoint(point_vector, waypoint_pose, next_waypoint_pose, vs_info.getStopRange(),
+                                               vs_info.getMaxSearchRange(), disable_back_collision_check);
         }
       }
 
@@ -1163,7 +1177,7 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
 int detectDecelerateObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl::PointXYZ>& points,
                              const int closest_waypoint, const autoware_msgs::Lane& lane,
                              ObstaclePoints* obstacle_points, const int deceleration_search_distance,
-                             const bool disable_side_deceleration)
+                             const bool disable_side_deceleration, const bool disable_back_collision_check)
 {
   int decelerate_obstacle_waypoint = -1;
   geometry_msgs::Pose current_pose = vs_info.getControlPose().pose;  // control_pseo:base_link, localizer_pose:lidar
@@ -1190,17 +1204,19 @@ int detectDecelerateObstacle(const VelocitySetInfo& vs_info, const pcl::PointClo
         double robot_shape_margin = std::max(0.0, (vs_info.getDecelerationRange() - vs_info.getRobotWidth() * 0.5));
         if (i == closest_waypoint)
         {
-          in_collision = isPointInRectCurrent2Waypoint(point_vector, waypoint_pose, vs_info.getRobotLength(),
-                                                       vs_info.getRobotWidth(), vs_info.getRobotBase2Back(),
-                                                       robot_shape_margin, vs_info.getMaxSearchRange());
+          in_collision =
+              isPointInRectCurrent2Waypoint(point_vector, waypoint_pose, vs_info.getRobotLength(),
+                                            vs_info.getRobotWidth(), vs_info.getRobotBase2Back(), robot_shape_margin,
+                                            vs_info.getMaxSearchRange(), disable_back_collision_check);
         }
         if (i < static_cast<int>(lane.waypoints.size()) - 1 && !in_collision)
         {
           geometry_msgs::Pose next_waypoint_pose = getRelativePose(current_pose, lane.waypoints[i + 1].pose.pose);
           next_waypoint_pose.position.z = 0;
-          in_collision = isPointInRectWaypoint2Waypoint(
-              point_vector, waypoint_pose, next_waypoint_pose, vs_info.getRobotLength(), vs_info.getRobotWidth(),
-              vs_info.getRobotBase2Back(), robot_shape_margin, vs_info.getMaxSearchRange());
+          in_collision =
+              isPointInRectWaypoint2Waypoint(point_vector, waypoint_pose, next_waypoint_pose, vs_info.getRobotLength(),
+                                             vs_info.getRobotWidth(), vs_info.getRobotBase2Back(), robot_shape_margin,
+                                             vs_info.getMaxSearchRange(), disable_back_collision_check);
         }
         if (in_collision && disable_side_deceleration)
         {
@@ -1215,14 +1231,15 @@ int detectDecelerateObstacle(const VelocitySetInfo& vs_info, const pcl::PointClo
         if (i == closest_waypoint)
         {
           in_collision = isPointInCurcleCurrent2Waypoint(point_vector, waypoint_pose, vs_info.getDecelerationRange(),
-                                                         vs_info.getMaxSearchRange());
+                                                         vs_info.getMaxSearchRange(), disable_back_collision_check);
         }
         if (i < static_cast<int>(lane.waypoints.size()) - 1 && !in_collision)
         {
           geometry_msgs::Pose next_waypoint_pose = getRelativePose(current_pose, lane.waypoints[i + 1].pose.pose);
           next_waypoint_pose.position.z = 0;
           in_collision = isPointInCurcleWaypoint2Waypoint(point_vector, waypoint_pose, next_waypoint_pose,
-                                                          vs_info.getDecelerationRange(), vs_info.getMaxSearchRange());
+                                                          vs_info.getDecelerationRange(), vs_info.getMaxSearchRange(),
+                                                          disable_back_collision_check);
         }
         if (in_collision && disable_side_deceleration)
         {
@@ -1268,7 +1285,7 @@ EControl pointsDetection(const VelocitySetInfo& vs_info, const int closest_waypo
                          const autoware_msgs::Lane& lane, const lanelet::ConstLanelets& closest_crosswalks,
                          int* obstacle_waypoint, ObstaclePoints* obstacle_points,
                          const int deceleration_search_distance, const int stop_search_distance,
-                         const bool disable_side_deceleration)
+                         const bool disable_side_deceleration, const bool disable_back_collision_check)
 {
   // no input for detection || no closest waypoint
   if ((vs_info.getPoints().empty() == true && vs_info.getDetectionResultByOtherNodes() == -1) || closest_waypoint < 0)
@@ -1277,7 +1294,7 @@ EControl pointsDetection(const VelocitySetInfo& vs_info, const int closest_waypo
   EObstacleType obstacle_type = EObstacleType::NONE;
   int stop_obstacle_waypoint =
       detectStopObstacle(vs_info, vs_info.getPoints(), closest_waypoint, detection_waypoint, lane, closest_crosswalks,
-                         obstacle_points, &obstacle_type, stop_search_distance);
+                         obstacle_points, &obstacle_type, stop_search_distance, disable_back_collision_check);
 
   // skip searching deceleration range
   if (vs_info.getDecelerationRange() < 0.01)
@@ -1295,7 +1312,7 @@ EControl pointsDetection(const VelocitySetInfo& vs_info, const int closest_waypo
 
   int decelerate_obstacle_waypoint =
       detectDecelerateObstacle(vs_info, vs_info.getPoints(), closest_waypoint, lane, obstacle_points,
-                               deceleration_search_distance, disable_side_deceleration);
+                               deceleration_search_distance, disable_side_deceleration, disable_back_collision_check);
 
   // stop obstacle was not found
   if (stop_obstacle_waypoint < 0)
@@ -1459,14 +1476,15 @@ EControl obstacleDetection(const VelocitySetInfo vs_info, int closest_waypoint, 
                            const autoware_msgs::Lane& lane, const lanelet::ConstLanelets& closest_crosswalks,
                            const ros::Publisher& detection_range_pub, const ros::Publisher& obstacle_pub,
                            int* obstacle_waypoint, const int deceleration_search_distance,
-                           const int stop_search_distance, const bool disable_side_deceleration)
+                           const int stop_search_distance, const bool disable_side_deceleration,
+                           const bool disable_back_collision_check)
 
 {
   ObstaclePoints obstacle_points;
 
-  EControl detection_result =
-      pointsDetection(vs_info, closest_waypoint, detection_waypoint, lane, closest_crosswalks, obstacle_waypoint,
-                      &obstacle_points, deceleration_search_distance, stop_search_distance, disable_side_deceleration);
+  EControl detection_result = pointsDetection(
+      vs_info, closest_waypoint, detection_waypoint, lane, closest_crosswalks, obstacle_waypoint, &obstacle_points,
+      deceleration_search_distance, stop_search_distance, disable_side_deceleration, disable_back_collision_check);
 
   displayDetectionRange(vs_info, lane, closest_crosswalks, closest_waypoint, detection_waypoint, detection_result,
                         *obstacle_waypoint, detection_range_pub, deceleration_search_distance, stop_search_distance);
@@ -1587,11 +1605,13 @@ int main(int argc, char** argv)
   std::string points_topic;
   int deceleration_search_distance;
   int stop_search_distance;
+  bool disable_back_collision_check = false;
 
   private_rosnode.param<bool>("use_crosswalk_detection", use_crosswalk_detection, true);
   private_rosnode.param<bool>("enable_multiple_crosswalk_detection", enable_multiple_crosswalk_detection, true);
   private_rosnode.param<bool>("enablePlannerDynamicSwitch", enablePlannerDynamicSwitch, false);
-  private_rosnode.param<bool>("disable_side_deceleration", disable_side_deceleration, false);
+  private_rosnode.param<bool>("disable_side_deceleration", disable_side_deceleration, true);
+  private_rosnode.param<bool>("disable_back_collision_check", disable_back_collision_check, false);
   private_rosnode.param<std::string>("points_topic", points_topic, "points_lanes");
   private_rosnode.param<int>("deceleration_search_distance", deceleration_search_distance, 30);
   private_rosnode.param<int>("stop_search_distance", stop_search_distance, 60);
@@ -1673,7 +1693,7 @@ int main(int argc, char** argv)
     EControl detection_result =
         obstacleDetection(vs_info, closest_waypoint, detection_waypoint, vs_path.getPrevWaypoints(), closest_crosswalks,
                           detection_range_pub, obstacle_pub, &obstacle_waypoint, deceleration_search_distance,
-                          stop_search_distance, disable_side_deceleration);
+                          stop_search_distance, disable_side_deceleration, disable_back_collision_check);
 
     changeWaypoints(vs_info, detection_result, closest_waypoint, obstacle_waypoint, final_waypoints_pub, &vs_path);
 
