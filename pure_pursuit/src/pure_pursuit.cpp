@@ -184,156 +184,146 @@ int PurePursuit::getTargetIndex(const autoware_msgs::Lane& current_path, geometr
 
 bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
 {
-  autoware_msgs::Lane current_lane;
-  current_lane.waypoints = current_waypoints_;
+  autoware_msgs::Lane lane;
+  lane.waypoints = current_waypoints_;
 
-  // Calculate the size of the path
   const int path_size = static_cast<int>(current_waypoints_.size());
 
-  // Get the updated indices
-  current_waypoint_index_ = updateCurrentIndex(current_lane, current_pose_, current_waypoint_index_);
+  // Update current index
+  current_waypoint_index_ = updateCurrentIndex(lane, current_pose_, current_waypoint_index_);
 
   if (current_waypoint_index_ < 0 || current_waypoint_index_ > path_size - 1)
   {
     ROS_WARN("Current waypoint index is out of range");
     output_kappa = 1.0 / RADIUS_MAX_;
-    output_velocity = 0;
+    output_velocity = 0.0;
     return false;
   }
-  else if (current_waypoint_index_ == path_size - 1)
+
+  if (current_waypoint_index_ == path_size - 1)
   {
-    // Current waypoint index is the last waypoint
+    // Reached the last waypoint
     output_kappa = 1.0 / RADIUS_MAX_;
-    output_velocity = 0;
+    output_velocity = 0.0;
     return true;
   }
 
-  target_waypoint_index_ = getTargetIndex(current_lane, current_pose_, current_waypoint_index_, lookahead_distance_);
+  target_waypoint_index_ = getTargetIndex(lane, current_pose_, current_waypoint_index_, lookahead_distance_);
+
   if (target_waypoint_index_ < 0 || target_waypoint_index_ >= path_size)
   {
-    // Target waypoint index is out of range
     ROS_WARN("Target waypoint index is out of range");
     output_kappa = 1.0 / RADIUS_MAX_;
-    output_velocity = 0;
+    output_velocity = 0.0;
     return false;
   }
 
-  // Check target velocity
-  output_velocity = getCurrentCommandVelocity(current_lane, current_waypoint_index_, current_pose_);
-  geometry_msgs::Pose target_pose_global = current_waypoints_.at(target_waypoint_index_).pose.pose;
-  geometry_msgs::Pose target_pose_local = getRelativePose(current_pose_, target_pose_global);
-  double target_yaw_local = tf::getYaw(target_pose_local.orientation);
+  // Target velocity
+  output_velocity = getCurrentCommandVelocity(lane, current_waypoint_index_, current_pose_);
 
-  // Detect if the current index is in a switchback zone
-  // (switchback point and its immediate neighbors).
-  const bool is_switchback_zone = isSwitchbackZone(current_lane, current_waypoint_index_, 1);
-  // Decide whether recovery is allowed for this step.
-  // In a switchback zone we first search for a "normal" candidate target
-  // (one that does not satisfy the recovery conditions). If at least one
-  // exists, we use it as target and DO NOT enter recovery. Only when all
-  // candidates are abnormal, recovery is allowed.
-  bool allow_recovery = true;
+  const geometry_msgs::Pose target_pose_global = current_waypoints_.at(target_waypoint_index_).pose.pose;
+  const geometry_msgs::Pose target_pose_local = getRelativePose(current_pose_, target_pose_global);
 
-  if (is_switchback_zone)
+  const double target_yaw_local = tf::getYaw(target_pose_local.orientation);
+  const double target_direction_local =
+      std::atan2(target_pose_local.position.y, target_pose_local.position.x);  // angle to target from current heading
+
+  const double eps_v = std::numeric_limits<double>::epsilon();
+  const double plane_dist_target_current = getPlaneDistance(target_pose_global.position, current_pose_.position);
+
+  // --- 進行方向（速度の符号）に合わせて角度を補正 ---
+  double motion_target_direction = target_direction_local;
+  double motion_target_yaw = target_yaw_local;
+
+  if (output_velocity < 0.0)
   {
-    const double eps_v = std::numeric_limits<double>::epsilon();
-
-    // Candidate indices around the current index (switchback近傍)
-    std::vector<int> candidate_indices;
-    const int begin = std::max(0, current_waypoint_index_ - 1);
-    const int end = std::min(path_size - 1, current_waypoint_index_ + 1);
-    for (int i = begin; i <= end; ++i)
-    {
-      candidate_indices.push_back(i);
-    }
-
-    bool found_normal_target = false;
-    geometry_msgs::Pose normal_target_global;
-
-    for (int idx : candidate_indices)
-    {
-      const geometry_msgs::Pose cand_pose_global = current_waypoints_.at(idx).pose.pose;
-      const geometry_msgs::Pose cand_pose_local = getRelativePose(current_pose_, cand_pose_global);
-      const double cand_yaw_local = tf::getYaw(cand_pose_local.orientation);
-
-      const bool cond_reverse_dir =
-          (cand_pose_local.position.x * output_velocity < 0.0) && (std::fabs(output_velocity) > eps_v);
-      const bool cond_large_yaw = (std::fabs(cand_yaw_local) > M_PI * 0.75) && (std::fabs(output_velocity) > eps_v);
-
-      // "Normal" if it does NOT trigger any recovery condition
-      if (!cond_reverse_dir && !cond_large_yaw)
-      {
-        found_normal_target = true;
-        normal_target_global = cand_pose_global;
-        break;
-      }
-    }
-    if (found_normal_target)
-    {
-      // Use this normal target and disable recovery for this step.
-      allow_recovery = false;
-      target_pose_global = normal_target_global;
-      target_pose_local = getRelativePose(current_pose_, target_pose_global);
-      target_yaw_local = tf::getYaw(target_pose_local.orientation);
-    }
+    // backwards: treat "forward" direction as 180deg rotated
+    if (motion_target_direction >= 0.0)
+      motion_target_direction -= M_PI;
     else
-    {
-      // All candidates are abnormal -> allow recovery as a fallback.
-      allow_recovery = true;
-    }
+      motion_target_direction += M_PI;
+
+    if (motion_target_yaw >= 0.0)
+      motion_target_yaw -= M_PI;
+    else
+      motion_target_yaw += M_PI;
   }
+
+  // Recovery 条件
+  const bool cond_reverse_direction =
+      (target_pose_local.position.x * output_velocity < 0.0) && (std::fabs(output_velocity) > eps_v);
+
+  const bool cond_large_yaw = (std::fabs(motion_target_yaw) > M_PI * 0.75) && (std::fabs(output_velocity) > eps_v);
+
+  const bool cond_too_far = (plane_dist_target_current > lookahead_distance_ * 2.0);
+
+  const bool cond_misaligned_direction =
+      (std::fabs(motion_target_direction) > M_PI * 0.5) && (std::fabs(output_velocity) > eps_v);
+
+  const bool recovery_mode = cond_reverse_direction || cond_large_yaw || cond_too_far || cond_misaligned_direction;
 
   // Recovery mode
-  if (allow_recovery && target_pose_local.position.x * output_velocity < 0 &&
-      fabs(output_velocity) > std::numeric_limits<double>::epsilon())
+  if (recovery_mode)
   {
-    if (output_velocity > 0)
-      output_velocity = std::min(output_velocity, RECOVERY_VEL_);
-    else
-      output_velocity = std::max(output_velocity, -RECOVERY_VEL_);
+    const double max_recovery_angle = M_PI * 0.25;  // 45 deg
 
-    if (target_pose_local.position.y > 0)
-      output_kappa = 1.0 / RADIUS_MIN_;
+    // Handle velocity: if almost zero, give default recovery velocity
+    if (std::fabs(output_velocity) <= eps_v)
+    {
+      output_velocity = RECOVERY_VEL_;
+    }
     else
-      output_kappa = -1.0 / RADIUS_MIN_;
+    {
+      // Limit recovery speed
+      if (output_velocity > 0.0)
+        output_velocity = std::min(output_velocity, RECOVERY_VEL_);
+      else
+        output_velocity = std::max(output_velocity, -RECOVERY_VEL_);
+    }
+
+    const double vel_sign = (output_velocity > 0.0) ? 1.0 : -1.0;
+    const double angle_abs = std::fabs(motion_target_direction);
+    const double angle_sign = (motion_target_direction >= 0.0) ? 1.0 : -1.0;
+    const double turn_sign = vel_sign * angle_sign;
+    const double max_kappa = 1.0 / RADIUS_MIN_;
+
+    // 小さい角度誤差: 0deg -> κ=0, 45deg -> κ=max を線形
+    if (angle_abs <= max_recovery_angle)
+    {
+      const double angle_ratio = angle_abs / max_recovery_angle;  // [0, 1]
+      output_kappa = turn_sign * max_kappa * angle_ratio;
+    }
+    // 大きい角度誤差: 常に最大曲率
+    else
+    {
+      output_kappa = turn_sign * max_kappa;
+    }
+
     return true;
   }
-  else if (allow_recovery && fabs(target_yaw_local) > M_PI * 0.75 &&
-           fabs(output_velocity) > std::numeric_limits<double>::epsilon())
 
-  {
-    if (output_velocity > 0)
-      output_velocity = std::min(output_velocity, RECOVERY_VEL_);
-    else
-      output_velocity = std::max(output_velocity, -RECOVERY_VEL_);
-
-    if (target_yaw_local > 0)
-      output_kappa = 1.0 / RADIUS_MIN_;
-    else
-      output_kappa = -1.0 / RADIUS_MIN_;
-    return true;
-  }
-
-  // No valid points beyond lookahead distance -> Creating virtual target
+  // --- Virtual target generation ---
   geometry_msgs::Pose virtual_target_pose_global = target_pose_global;
-  if (getPlaneDistance(target_pose_global.position, current_pose_.position) < minimum_lookahead_distance_)
+
+  if (plane_dist_target_current < minimum_lookahead_distance_)
   {
-    double target_vel_sign = 0;
+    double target_vel_sign = 0.0;
+
     if (target_waypoint_index_ > 0)
     {
-      geometry_msgs::Pose prev_target_pose_global = current_lane.waypoints.at(target_waypoint_index_ - 1).pose.pose;
-      geometry_msgs::Pose target_pose_from_prev = getRelativePose(prev_target_pose_global, target_pose_global);
-      target_vel_sign = target_pose_from_prev.position.x > 0 ? 1.0 : -1.0;
+      const geometry_msgs::Pose prev_target_pose_global = lane.waypoints.at(target_waypoint_index_ - 1).pose.pose;
+      const geometry_msgs::Pose target_pose_from_prev = getRelativePose(prev_target_pose_global, target_pose_global);
+      target_vel_sign = (target_pose_from_prev.position.x > 0.0) ? 1.0 : -1.0;
     }
     else if (target_waypoint_index_ < path_size - 1)
     {
-      geometry_msgs::Pose next_target_pose_global = current_lane.waypoints.at(target_waypoint_index_ + 1).pose.pose;
-      geometry_msgs::Pose next_target_pose_local = getRelativePose(target_pose_global, next_target_pose_global);
-      target_vel_sign = next_target_pose_local.position.x > 0 ? 1.0 : -1.0;
+      const geometry_msgs::Pose next_target_pose_global = lane.waypoints.at(target_waypoint_index_ + 1).pose.pose;
+      const geometry_msgs::Pose next_target_pose_local = getRelativePose(target_pose_global, next_target_pose_global);
+      target_vel_sign = (next_target_pose_local.position.x > 0.0) ? 1.0 : -1.0;
     }
     else
     {
-      target_vel_sign = target_pose_local.position.x > 0 ? 1.0 : -1.0;
+      target_vel_sign = (target_pose_local.position.x > 0.0) ? 1.0 : -1.0;
     }
 
     // Move the virtual target along the path direction so that
@@ -343,18 +333,17 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
 
     if (remaining_distance > 0.0)
     {
-      // Create a virtual target based on the current target
-      // Get normalized direction vector
-      double target_yaw_global = getYawFromPath(current_lane, target_waypoint_index_);
-      tf::Vector3 direction =
-          tf::Vector3(target_vel_sign * cos(target_yaw_global), target_vel_sign * sin(target_yaw_global), 0.0);
+      const double target_yaw_global = getYawFromPath(lane, target_waypoint_index_);
+      const tf::Vector3 direction(target_vel_sign * std::cos(target_yaw_global),
+                                  target_vel_sign * std::sin(target_yaw_global), 0.0);
+
       virtual_target_pose_global.position.x += remaining_distance * direction.x();
       virtual_target_pose_global.position.y += remaining_distance * direction.y();
     }
   }
-  else if (getPlaneDistance(target_pose_global.position, current_pose_.position) > lookahead_distance_)
+  else if (plane_dist_target_current > lookahead_distance_)
   {
-    double scale = lookahead_distance_ / getPlaneDistance(target_pose_global.position, current_pose_.position);
+    const double scale = lookahead_distance_ / plane_dist_target_current;
     virtual_target_pose_global.position.x =
         current_pose_.position.x + (target_pose_global.position.x - current_pose_.position.x) * scale;
     virtual_target_pose_global.position.y =
@@ -364,17 +353,18 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   // Calculate curvature to the target point
   output_kappa = calcCurvature(virtual_target_pose_global.position);
 
-  // Verify if curvature can be calculated based on lookahead distance
+  // Verify if curvature can be calculated based on lookahead distance / indices
   if (target_waypoint_index_ == 0 || target_waypoint_index_ == path_size - 1 ||
       target_waypoint_index_ == current_waypoint_index_)
   {
     output_kappa = 1.0 / RADIUS_MAX_;
-    output_velocity = 0;
+    output_velocity = 0.0;
     return false;
   }
+
   // Set next target for visualization
   next_target_position_ = virtual_target_pose_global.position;
-  // Return true if the curvature can be calculated
+
   return true;
 }
 
