@@ -489,12 +489,15 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
   if (a_dec <= 0.0)
     return output_lane;
 
-  // Store original velocities to respect upper limits
+  // Store original velocities as upper limits
   std::vector<double> orig_vel(N, 0.0);
   for (int k = 0; k < N; ++k)
   {
     orig_vel[k] = lane.waypoints[k].twist.twist.linear.x;
   }
+
+  if (!(slowdown_scale > 0.0 && slowdown_scale < 1.0))
+    return output_lane;
 
   for (const size_t idx : stopline_indexes)
   {
@@ -503,63 +506,70 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
       continue;
 
     // ------------------------------------------------
-    // 1. Index calculation (clamped)
+    // 1. Conceptual "stop block" for red light
+    //    (we do NOT use it here, just for indexing)
     // ------------------------------------------------
-    // "stop block": indices that should be nearly stopped around the stopline
-    const int stop_block_start_idx = std::max(0, i - static_cast<int>(stop_before_cnt));
-    const int stop_block_end_idx = std::min(N - 1, i + static_cast<int>(stop_after_cnt));
+    const int zero_start_idx = std::max(0, i - static_cast<int>(stop_before_cnt));
+    const int zero_end_idx = std::min(N - 1, i + static_cast<int>(stop_after_cnt));
 
-    // Slowdown region starts further upstream
-    int slowdown_start_idx = i - static_cast<int>(slow_before_cnt);
-    if (slowdown_start_idx < 0)
-      slowdown_start_idx = 0;
-
-    // Low-speed section:
-    // union of the slowdown region and the stop block
-    const int low_speed_start_idx = slowdown_start_idx;
-    const int low_speed_end_idx = stop_block_start_idx - 1;
-
-    if (low_speed_start_idx >= N)
+    if (zero_start_idx >= N)
       continue;
 
     // ------------------------------------------------
-    // 2. Decide low-speed value v_low based on original velocity
-    //    (use original velocity at low_speed_start_idx × slowdown_scale)
+    // 2. Slowdown region:
+    //    from (zero_start_idx - slow_before_cnt) to (zero_start_idx - 1)
+    //    i.e. only BEFORE the red-stop region
     // ------------------------------------------------
-    if (!(slowdown_scale > 0.0 && slowdown_scale < 1.0))
+    int slow_start_idx = zero_start_idx - static_cast<int>(slow_before_cnt);
+    if (slow_start_idx < 0)
+      slow_start_idx = 0;
+
+    int slow_end_idx = zero_start_idx - 1;
+    if (slow_end_idx >= N)
+      slow_end_idx = N - 1;
+
+    // If there is no room for a constant low-speed section, we still allow
+    // smooth decel/accel but skip the plateau.
+    const bool has_slow_plateau = (slow_end_idx >= slow_start_idx);
+
+    // Reference speed for slowdown (near the stop region)
+    int ref_idx = has_slow_plateau ? slow_end_idx : zero_start_idx;
+    if (ref_idx < 0 || ref_idx >= N)
       continue;
 
-    const double v_orig_ref = orig_vel[low_speed_start_idx];
+    const double v_orig_ref = orig_vel[ref_idx];
     if (std::fabs(v_orig_ref) < 1.0e-4)
-      continue;  // If original is already almost 0, nothing meaningful to do
+      continue;
 
-    double v_low = std::fabs(v_orig_ref) * slowdown_scale;
+    const double v_low = std::fabs(v_orig_ref) * slowdown_scale;
     const double v_low_sq = v_low * v_low;
 
     // ------------------------------------------------
-    // 3. Low-speed section: [low_speed_start_idx, low_speed_end_idx]
-    //    Constant speed with magnitude ≤ original magnitude at each waypoint
+    // 3. Constant low-speed section [slow_start_idx, slow_end_idx]
+    //    (only if we actually have such a section)
     // ------------------------------------------------
-    for (int j = low_speed_start_idx; j <= low_speed_end_idx && j < N; ++j)
+    if (has_slow_plateau)
     {
-      const double orig = orig_vel[j];
-      const double orig_mag = std::fabs(orig);
+      for (int j = slow_start_idx; j <= slow_end_idx; ++j)
+      {
+        const double orig = orig_vel[j];
+        const double orig_mag = std::fabs(orig);
 
-      // Ensure the new magnitude never exceeds the original magnitude
-      const double v_mag = std::min(orig_mag, v_low);
-      const int s = (orig >= 0.0) ? 1 : -1;
+        const double v_mag = std::min(orig_mag, v_low);
+        const int sgn = (orig >= 0.0) ? 1 : -1;
 
-      output_lane.waypoints[j].twist.twist.linear.x = s * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
+      }
     }
 
     // ------------------------------------------------
     // 4. Upstream: smooth deceleration down to v_low
     //    v^2 = v_low^2 + 2 * a_dec * d
     // ------------------------------------------------
-    if (low_speed_start_idx - 1 >= 0)
+    if (slow_start_idx - 1 >= 0)
     {
       double dist = 0.0;
-      for (int j = low_speed_start_idx - 1; j >= 0; --j)
+      for (int j = slow_start_idx - 1; j >= 0; --j)
       {
         const geometry_msgs::Point& p0 = output_lane.waypoints[j].pose.pose.position;
         const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
@@ -568,25 +578,25 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
         const double v_allowed = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_dec * dist));
         const double orig_mag = std::fabs(orig_vel[j]);
         const double v_mag = std::min(orig_mag, v_allowed);
-        const int s = (orig_vel[j] >= 0.0) ? 1 : -1;
+        const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
 
-        output_lane.waypoints[j].twist.twist.linear.x = s * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
 
-        // If original speed is already below the allowed limit,
-        // further upstream points are likely already safe
         if (orig_mag <= v_allowed)
           break;
       }
     }
 
     // ------------------------------------------------
-    // 5. Downstream: smooth acceleration back from v_low
+    // 5. Downstream from the stop region:
+    //    smooth acceleration back from v_low
     //    v^2 = v_low^2 + 2 * a_acc * d
+    //    (starts at zero_start_idx; low-speed NEVER extends past it)
     // ------------------------------------------------
-    if (a_acc > 0.0 && low_speed_end_idx + 1 < N)
+    if (a_acc > 0.0 && zero_start_idx + 1 < N)
     {
       double dist = 0.0;
-      for (int j = low_speed_end_idx + 1; j < N; ++j)
+      for (int j = zero_start_idx + 1; j < N; ++j)
       {
         const geometry_msgs::Point& p0 = output_lane.waypoints[j - 1].pose.pose.position;
         const geometry_msgs::Point& p1 = output_lane.waypoints[j].pose.pose.position;
@@ -595,12 +605,10 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
         const double v_allowed = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_acc * dist));
         const double orig_mag = std::fabs(orig_vel[j]);
         const double v_mag = std::min(orig_mag, v_allowed);
-        const int s = (orig_vel[j] >= 0.0) ? 1 : -1;
+        const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
 
-        output_lane.waypoints[j].twist.twist.linear.x = s * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
 
-        // If original speed is already below the allowed limit,
-        // no need to propagate further
         if (orig_mag <= v_allowed)
           break;
       }
