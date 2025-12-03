@@ -78,11 +78,13 @@ private:
   std::string map_frame_;
   double grid_min_value_;
   double grid_max_value_;
+
+  // pixel-based grid definition
   double grid_resolution_;
-  double grid_length_x_;
-  double grid_length_y_;
-  double grid_position_x_;
-  double grid_position_y_;
+  int grid_num_x_front_;
+  int grid_num_x_back_;
+  int grid_num_y_left_;
+  int grid_num_y_right_;
 
   double maximum_lidar_height_thres_;
   double minimum_lidar_height_thres_;

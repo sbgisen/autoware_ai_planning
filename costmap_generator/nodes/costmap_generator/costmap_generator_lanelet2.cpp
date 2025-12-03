@@ -51,11 +51,6 @@ void CostmapGeneratorLanelet2::init()
   private_nh_.param<std::string>("map_frame", map_frame_, "map");
   private_nh_.param<double>("grid_min_value", grid_min_value_, 0.0);
   private_nh_.param<double>("grid_max_value", grid_max_value_, 1.0);
-  private_nh_.param<double>("grid_resolution", grid_resolution_, 0.2);
-  private_nh_.param<double>("grid_length_x", grid_length_x_, 50);
-  private_nh_.param<double>("grid_length_y", grid_length_y_, 30);
-  private_nh_.param<double>("grid_position_x", grid_position_x_, 20);
-  private_nh_.param<double>("grid_position_y", grid_position_y_, 0);
   private_nh_.param<double>("maximum_lidar_height_thres", maximum_lidar_height_thres_, 0.3);
   private_nh_.param<double>("minimum_lidar_height_thres", minimum_lidar_height_thres_, -2.2);
   private_nh_.param<bool>("use_objects_box", use_objects_box_, false);
@@ -69,6 +64,29 @@ void CostmapGeneratorLanelet2::init()
   private_nh_.param<double>("robot_length", robot_length_, 0.82);
   private_nh_.param<double>("robot_base2back", robot_base2back_, 0.137);
   private_nh_.param<bool>("remove_inside_robot", remove_inside_robot_, true);
+
+  double grid_length_x;
+  double grid_length_y;
+  double grid_position_x;
+  double grid_position_y;
+  private_nh_.param<double>("grid_resolution", grid_resolution_, 0.2);
+  private_nh_.param<double>("grid_length_x", grid_length_x, 50);
+  private_nh_.param<double>("grid_length_y", grid_length_y, 30);
+  private_nh_.param<double>("grid_position_x", grid_position_x, 20);
+  private_nh_.param<double>("grid_position_y", grid_position_y, 0);
+
+  // number of cells in each direction from origin (0,0)
+  grid_num_x_front_ = static_cast<int>(std::ceil((0.5 * grid_length_x + grid_position_x) / grid_resolution_));
+  grid_num_x_back_ = static_cast<int>(std::ceil((0.5 * grid_length_x - grid_position_x) / grid_resolution_));
+  grid_num_y_left_ = static_cast<int>(std::ceil((0.5 * grid_length_y + grid_position_y) / grid_resolution_));
+  grid_num_y_right_ = static_cast<int>(std::ceil((0.5 * grid_length_y - grid_position_y) / grid_resolution_));
+
+  // safety: avoid negative counts
+  grid_num_x_front_ = std::max(0, grid_num_x_front_);
+  grid_num_x_back_ = std::max(0, grid_num_x_back_);
+  grid_num_y_left_ = std::max(0, grid_num_y_left_);
+  grid_num_y_right_ = std::max(0, grid_num_y_right_);
+
   initGridmap();
 }
 
@@ -169,8 +187,21 @@ void CostmapGeneratorLanelet2::sensorPointsCallback(const sensor_msgs::PointClou
 void CostmapGeneratorLanelet2::initGridmap()
 {
   costmap_.setFrameId(lidar_frame_);
-  costmap_.setGeometry(grid_map::Length(grid_length_x_, grid_length_y_), grid_resolution_,
-                       grid_map::Position(grid_position_x_, grid_position_y_));
+
+  const double res = grid_resolution_;
+
+  // number of cells including the origin cell
+  const int num_cells_x = grid_num_x_front_ + grid_num_x_back_ + 1;
+  const int num_cells_y = grid_num_y_left_ + grid_num_y_right_ + 1;
+
+  const double length_x = static_cast<double>(num_cells_x) * res;
+  const double length_y = static_cast<double>(num_cells_y) * res;
+
+  // center position so that the origin (0,0) is exactly at the center of one cell
+  const double center_x = res * static_cast<double>(grid_num_x_front_ - grid_num_x_back_) * 0.5;
+  const double center_y = res * static_cast<double>(grid_num_y_left_ - grid_num_y_right_) * 0.5;
+
+  costmap_.setGeometry(grid_map::Length(length_x, length_y), res, grid_map::Position(center_x, center_y));
 
   costmap_.add(SENSOR_POINTS_COSTMAP_LAYER_, grid_min_value_);
   costmap_.add(OBJECTS_BOX_COSTMAP_LAYER_, grid_min_value_);
