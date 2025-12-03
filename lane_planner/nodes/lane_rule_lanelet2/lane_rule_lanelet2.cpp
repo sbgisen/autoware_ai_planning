@@ -516,8 +516,8 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
 
     // Low-speed section:
     // union of the slowdown region and the stop block
-    const int low_speed_start_idx = std::min(slowdown_start_idx, stop_block_start_idx);
-    const int low_speed_end_idx = stop_block_end_idx;
+    const int low_speed_start_idx = slowdown_start_idx;
+    const int low_speed_end_idx = stop_block_start_idx - 1;
 
     if (low_speed_start_idx >= N)
       continue;
