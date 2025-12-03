@@ -298,9 +298,9 @@ autoware_msgs::Lane apply_stop_and_slowdown(const autoware_msgs::Lane& lane,
   // Store original velocities as upper limits
   std::vector<double> orig_vel(N, 0.0);
   for (int k = 0; k < N; ++k)
-  {
     orig_vel[k] = lane.waypoints[k].twist.twist.linear.x;
-  }
+
+  std::vector<double> output_vel = orig_vel;
 
   for (const size_t idx : stopline_indexes)
   {
@@ -342,12 +342,11 @@ autoware_msgs::Lane apply_stop_and_slowdown(const autoware_msgs::Lane& lane,
       // 3-a. Set constant low speed (not exceeding original)
       for (int j = slow_start_idx; j <= slow_end_idx; ++j)
       {
-        const double orig = orig_vel[j];
-        const double orig_mag = std::fabs(orig);
-        const double v_mag = std::min(orig_mag, v_low);
-        const int sgn = (orig >= 0.0) ? 1 : -1;
+        const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
+        const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_low);
 
-        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
+        output_vel[j] = sgn * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
       }
 
       // 4. Apply deceleration-to-zero limit *inside* the low-speed section
@@ -360,14 +359,12 @@ autoware_msgs::Lane apply_stop_and_slowdown(const autoware_msgs::Lane& lane,
         const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
         dist_to_stop += hypot(p1.x - p0.x, p1.y - p0.y);
 
-        const double v_brake = std::sqrt(std::max(0.0, 2.0 * a_dec * dist_to_stop));
-
-        const double orig_mag = std::fabs(orig_vel[j]);
-        const double current_mag = std::fabs(output_lane.waypoints[j].twist.twist.linear.x);
-        const double v_mag = std::min(orig_mag, std::min(current_mag, v_brake));
         const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
+        const double v_brake = std::sqrt(std::max(0.0, 2.0 * a_dec * dist_to_stop));
+        const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_brake);
 
-        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
+        output_vel[j] = sgn * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
       }
 
       // 5. Upstream of the low-speed section:
@@ -385,15 +382,14 @@ autoware_msgs::Lane apply_stop_and_slowdown(const autoware_msgs::Lane& lane,
           const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
           dist += hypot(p1.x - p0.x, p1.y - p0.y);
 
-          const double v_allowed = std::sqrt(std::max(0.0, v_entry_sq + 2.0 * a_dec * dist));
-          const double orig_mag = std::fabs(orig_vel[j]);
-          const double v_mag = std::min(orig_mag, v_allowed);
           const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
-
-          output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
-
-          if (orig_mag <= v_allowed)
+          const double v_brake = std::sqrt(std::max(0.0, v_entry_sq + 2.0 * a_dec * dist));
+          if (std::fabs(orig_vel[j]) <= v_brake)
             break;
+
+          const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_brake);
+          output_vel[j] = sgn * v_mag;
+          output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
         }
       }
     }
@@ -409,15 +405,14 @@ autoware_msgs::Lane apply_stop_and_slowdown(const autoware_msgs::Lane& lane,
           const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
           dist_to_stop += hypot(p1.x - p0.x, p1.y - p0.y);
 
-          const double v_brake = std::sqrt(std::max(0.0, 2.0 * a_dec * dist_to_stop));
-          const double orig_mag = std::fabs(orig_vel[j]);
-          const double v_mag = std::min(orig_mag, v_brake);
           const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
-
-          output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
-
-          if (orig_mag <= v_brake)
+          const double v_brake = std::sqrt(std::max(0.0, 2.0 * a_dec * dist_to_stop));
+          if (std::fabs(orig_vel[j]) <= v_brake)
             break;
+
+          const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_brake);
+          output_vel[j] = sgn * v_mag;
+          output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
         }
       }
     }
@@ -433,15 +428,14 @@ autoware_msgs::Lane apply_stop_and_slowdown(const autoware_msgs::Lane& lane,
         const geometry_msgs::Point& p1 = output_lane.waypoints[j].pose.pose.position;
         dist += hypot(p1.x - p0.x, p1.y - p0.y);
 
-        const double v_allowed = std::sqrt(std::max(0.0, 2.0 * a_acc * dist));
-        const double orig_mag = std::fabs(orig_vel[j]);
-        const double v_mag = std::min(orig_mag, v_allowed);
         const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
-
-        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
-
-        if (orig_mag <= v_allowed)
+        const double v_brake = std::sqrt(std::max(0.0, 2.0 * a_acc * dist));
+        if (std::fabs(orig_vel[j]) <= v_brake)
           break;
+
+        const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_brake);
+        output_vel[j] = sgn * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
       }
     }
   }
@@ -470,6 +464,7 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
   std::vector<double> orig_vel(N, 0.0);
   for (int k = 0; k < N; ++k)
     orig_vel[k] = lane.waypoints[k].twist.twist.linear.x;
+  std::vector<double> output_vel = orig_vel;
 
   for (const size_t idx : stopline_indexes)
   {
@@ -513,12 +508,10 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
     {
       for (int j = slow_start_idx; j <= slow_end_idx; ++j)
       {
-        const double orig = orig_vel[j];
-        const double orig_mag = std::fabs(orig);
-        const double v_mag = std::min(orig_mag, v_low);
-        const int sgn = (orig >= 0.0) ? 1 : -1;
-
-        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
+        const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
+        const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_low);
+        output_vel[j] = sgn * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
       }
     }
 
@@ -535,15 +528,14 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
         const geometry_msgs::Point& p1 = output_lane.waypoints[j + 1].pose.pose.position;
         dist += hypot(p1.x - p0.x, p1.y - p0.y);
 
-        const double v_allowed = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_dec * dist));
-        const double orig_mag = std::fabs(orig_vel[j]);
-        const double v_mag = std::min(orig_mag, v_allowed);
         const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
-
-        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
-
-        if (orig_mag <= v_allowed)
+        const double v_brake = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_dec * dist));
+        if (std::fabs(orig_vel[j]) <= v_brake)
           break;
+
+        const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_brake);
+        output_vel[j] = sgn * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
       }
     }
 
@@ -565,15 +557,14 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
           dist += hypot(p1.x - p0.x, p1.y - p0.y);
         }
 
-        const double v_allowed = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_acc * dist));
-        const double orig_mag = std::fabs(orig_vel[j]);
-        const double v_mag = std::min(orig_mag, v_allowed);
         const int sgn = (orig_vel[j] >= 0.0) ? 1 : -1;
-
-        output_lane.waypoints[j].twist.twist.linear.x = sgn * v_mag;
-
-        if (orig_mag <= v_allowed)
+        const double v_brake = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_acc * dist));
+        if (std::fabs(orig_vel[j]) <= v_brake)
           break;
+
+        const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_brake);
+        output_vel[j] = sgn * v_mag;
+        output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
       }
     }
   }
