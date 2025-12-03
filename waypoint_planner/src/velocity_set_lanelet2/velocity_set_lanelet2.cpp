@@ -529,9 +529,18 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 vec_robot_to_point, const g
   // --- Straight-path region check
   if (is_straight_path)
   {
-    return fabs(vec_robot_to_point.y()) < robot_width * 0.5 + margin &&
-           vec_robot_to_point.x() < std::max(0.0, vec_robot_to_goal.x()) &&
-           vec_robot_to_point.x() > std::min(0.0, vec_robot_to_goal.x());
+    if (vec_robot_to_goal.x() > 0.0)
+    {
+      return fabs(vec_robot_to_point.y()) < robot_width * 0.5 + margin &&
+             vec_robot_to_point.x() > -robot_base_to_rear - margin &&
+             vec_robot_to_point.x() < vec_robot_to_goal.x() + robot_length - robot_base_to_rear + margin;
+    }
+    else
+    {
+      return fabs(vec_robot_to_point.y()) < robot_width * 0.5 + margin &&
+             vec_robot_to_point.x() < robot_length - robot_base_to_rear + margin &&
+             vec_robot_to_point.x() > vec_robot_to_goal.x() - robot_base_to_rear - margin;
+    }
   }
 
   // --- Turning path (arc model)
@@ -702,9 +711,18 @@ bool isPointInRectWaypoint2Waypoint(const tf::Vector3 vec_robot_to_point, const 
   // --- Straight-path region check
   if (is_straight_path)
   {
-    return std::fabs(vec_start_to_point.y()) < robot_width * 0.5 + margin &&
-           vec_start_to_point.x() < std::max(0.0, vec_start_to_goal.x()) &&
-           vec_start_to_point.x() > std::min(0.0, vec_start_to_goal.x());
+    if (vec_start_to_goal.x() > 0.0)
+    {
+      return fabs(vec_start_to_point.y()) < robot_width * 0.5 + margin &&
+             vec_start_to_point.x() > -robot_base_to_rear - margin &&
+             vec_start_to_point.x() < vec_start_to_goal.x() + robot_length - robot_base_to_rear + margin;
+    }
+    else
+    {
+      return fabs(vec_start_to_point.y()) < robot_width * 0.5 + margin &&
+             vec_start_to_point.x() < robot_length - robot_base_to_rear + margin &&
+             vec_start_to_point.x() > vec_start_to_goal.x() - robot_base_to_rear - margin;
+    }
   }
 
   // --- Turning path (arc model around the start pose)
@@ -1025,6 +1043,9 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
 {
   int stop_obstacle_waypoint = -1;
   *obstacle_type = EObstacleType::NONE;
+  // Search from control pose(current robot position)
+  geometry_msgs::Pose current_pose = vs_info.getLocalizerPose();
+
   // start search from the closest waypoint
   for (int i = closest_waypoint; i < closest_waypoint + stop_search_distance; i++)
   {
@@ -1055,7 +1076,7 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
     }
 
     // Get the coordinates of the current waypoint
-    geometry_msgs::Pose waypoint_pose = getRelativePose(vs_info.getLocalizerPose(), lane.waypoints[i].pose.pose);
+    geometry_msgs::Pose waypoint_pose = getRelativePose(current_pose, lane.waypoints[i].pose.pose);
     waypoint_pose.position.z = 0;
 
     double current_index_vel = lane.waypoints[i].twist.twist.linear.x;
@@ -1088,8 +1109,7 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
         }
         if (i < static_cast<int>(lane.waypoints.size()) - 1 && !in_collision)
         {
-          geometry_msgs::Pose next_waypoint_pose =
-              getRelativePose(vs_info.getLocalizerPose(), lane.waypoints[i + 1].pose.pose);
+          geometry_msgs::Pose next_waypoint_pose = getRelativePose(current_pose, lane.waypoints[i + 1].pose.pose);
           next_waypoint_pose.position.z = 0;
           in_collision = isPointInRectWaypoint2Waypoint(
               point_vector, waypoint_pose, next_waypoint_pose, vs_info.getRobotLength(), vs_info.getRobotWidth(),
@@ -1105,8 +1125,7 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
         }
         if (i < static_cast<int>(lane.waypoints.size()) - 1 && !in_collision)
         {
-          geometry_msgs::Pose next_waypoint_pose =
-              getRelativePose(vs_info.getLocalizerPose(), lane.waypoints[i + 1].pose.pose);
+          geometry_msgs::Pose next_waypoint_pose = getRelativePose(current_pose, lane.waypoints[i + 1].pose.pose);
           next_waypoint_pose.position.z = 0;
           in_collision = isPointInCurcleWaypoint2Waypoint(point_vector, waypoint_pose, next_waypoint_pose,
                                                           vs_info.getStopRange(), vs_info.getMaxSearchRange());
@@ -1120,7 +1139,7 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
         point_temp.x = p.x;
         point_temp.y = p.y;
         point_temp.z = p.z;
-        obstacle_points->setStopPoint(calcAbsoluteCoordinate(point_temp, vs_info.getLocalizerPose()));
+        obstacle_points->setStopPoint(calcAbsoluteCoordinate(point_temp, current_pose));
       }
     }
 
@@ -1404,6 +1423,12 @@ void displayDetectionRange(const VelocitySetInfo& vs_info, const autoware_msgs::
   // inverse to correct direction of triangle
   std::reverse(crosswalk_marker.points.begin(), crosswalk_marker.points.end());
   crosswalk_marker.frame_locked = true;
+
+  // Set vs_info.getLocalizerPose() as origin
+  geometry_msgs::Point origin;
+  origin = vs_info.getLocalizerPose().position;
+  waypoint_marker_decelerate.points.push_back(origin);
+  waypoint_marker_stop.points.push_back(origin);
 
   // set marker points coordinate
   for (int i = 0; i < stop_search_distance; i++)
