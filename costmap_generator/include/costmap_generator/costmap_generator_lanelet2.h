@@ -74,7 +74,7 @@ private:
   lanelet::LaneletMapPtr lanelet_map_;
   bool use_all_road_lanelets_ = true;
 
-  std::string lidar_frame_;
+  std::string base_frame_;
   std::string map_frame_;
   double grid_min_value_;
   double grid_max_value_;

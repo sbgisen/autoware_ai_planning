@@ -47,7 +47,7 @@ CostmapGeneratorLanelet2::CostmapGeneratorLanelet2()
 
 void CostmapGeneratorLanelet2::init()
 {
-  private_nh_.param<std::string>("lidar_frame", lidar_frame_, "velodyne");
+  private_nh_.param<std::string>("base_frame", base_frame_, "base_link");
   private_nh_.param<std::string>("map_frame", map_frame_, "map");
   private_nh_.param<double>("grid_min_value", grid_min_value_, 0.0);
   private_nh_.param<double>("grid_max_value", grid_max_value_, 1.0);
@@ -186,7 +186,7 @@ void CostmapGeneratorLanelet2::sensorPointsCallback(const sensor_msgs::PointClou
 
 void CostmapGeneratorLanelet2::initGridmap()
 {
-  costmap_.setFrameId(lidar_frame_);
+  costmap_.setFrameId(base_frame_);
 
   const double res = grid_resolution_;
 
@@ -234,7 +234,7 @@ grid_map::Matrix CostmapGeneratorLanelet2::generateLanelet2Costmap()
   {
     has_subscribed_wayarea_ = true;
     object_map::FillPolygonAreas(lanelet2_costmap, area_points_, LANELET2_COSTMAP_LAYER_, grid_max_value_,
-                                 grid_min_value_, grid_min_value_, grid_max_value_, lidar_frame_, map_frame_,
+                                 grid_min_value_, grid_min_value_, grid_max_value_, base_frame_, map_frame_,
                                  tf_listener_);
   }
   return lanelet2_costmap[LANELET2_COSTMAP_LAYER_];
