@@ -242,11 +242,6 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
       motion_target_direction -= M_PI;
     else
       motion_target_direction += M_PI;
-
-    if (motion_target_yaw >= 0.0)
-      motion_target_yaw -= M_PI;
-    else
-      motion_target_yaw += M_PI;
   }
 
   // Recovery 条件
