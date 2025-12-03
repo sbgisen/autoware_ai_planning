@@ -68,6 +68,7 @@ private:
   ros::Subscriber global_waypoints_sub_;
   ros::Subscriber closest_waypoint_sub_;
   ros::Subscriber obstacle_waypoint_sub_;
+  ros::Subscriber local_waypoints_sub_;
   ros::Subscriber state_sub_;
   ros::Rate* rate_;
   ros::Timer timer_;
@@ -115,7 +116,9 @@ private:
 
   // Index of the obstacle relative to current_waypoint_index_.
   int obstacle_local_index_ = -1;
+  int obstacle_global_index_ = -1;
   nav_msgs::OccupancyGrid costmap_;
+  autoware_msgs::Lane local_waypoints_;
   autoware_msgs::Lane global_waypoints_;
   autoware_msgs::Lane avoid_merged_waypoints_;
   geometry_msgs::PoseStamped current_pose_local_, current_pose_global_;
@@ -126,6 +129,7 @@ private:
   bool costmap_initialized_ = false;
   bool current_pose_initialized_ = false;
   bool current_velocity_initialized_ = false;
+  bool local_waypoints_initialized_ = false;
   bool global_waypoints_initialized_ = false;
   bool closest_global_index_initialized_ = false;
 
@@ -136,6 +140,7 @@ private:
   void baseWaypointsCallback(const autoware_msgs::Lane& msg);
   void closestIndexCallback(const std_msgs::Int32& msg);
   void obstacleIndexCallback(const std_msgs::Int32& msg);
+  void localWaypointsCallback(const autoware_msgs::Lane& msg);
 
   // functions
   bool checkInitialized();

@@ -43,6 +43,7 @@ AstarAvoid::AstarAvoid() : nh_(), private_nh_("~")
   global_waypoints_sub_ = nh_.subscribe("base_waypoints", 1, &AstarAvoid::baseWaypointsCallback, this);
   closest_waypoint_sub_ = nh_.subscribe("closest_waypoint", 1, &AstarAvoid::closestIndexCallback, this);
   obstacle_waypoint_sub_ = nh_.subscribe("obstacle_waypoint", 1, &AstarAvoid::obstacleIndexCallback, this);
+  local_waypoints_sub_ = nh_.subscribe("final_waypoints", 1, &AstarAvoid::localWaypointsCallback, this);
 
   rate_ = new ros::Rate(update_rate_);
 }
@@ -112,6 +113,22 @@ void AstarAvoid::closestIndexCallback(const std_msgs::Int32& msg)
 void AstarAvoid::obstacleIndexCallback(const std_msgs::Int32& msg)
 {
   obstacle_local_index_ = msg.data;
+  if (local_waypoints_initialized_ && obstacle_local_index_ < static_cast<int>(local_waypoints_.waypoints.size()))
+  {
+    geometry_msgs::Pose obstacle_pose = local_waypoints_.waypoints[obstacle_local_index_].pose.pose;
+    // TODO: Why quaternion is not set properly?
+    obstacle_pose.orientation.x = 0.0;
+    obstacle_pose.orientation.y = 0.0;
+    obstacle_pose.orientation.z = 0.0;
+    obstacle_pose.orientation.w = 1.0;
+    obstacle_global_index_ = updateCurrentIndex(global_waypoints_, obstacle_pose, current_global_index_);
+  }
+}
+
+void AstarAvoid::localWaypointsCallback(const autoware_msgs::Lane& msg)
+{
+  local_waypoints_ = msg;
+  local_waypoints_initialized_ = true;
 }
 
 void AstarAvoid::run()
@@ -179,7 +196,8 @@ void AstarAvoid::runAstarAvoidTransition()
   }
   else if (request_aster_planning)
   {
-    ROS_INFO("Start Plan: Request A* planning");
+    ROS_INFO("Start Plan: Request A* planning: obstacle_local_index = %d, obstacle_global_index = %d",
+             obstacle_local_index_, obstacle_global_index_);
     if (planAvoidWaypoints())
     {
       ROS_INFO("Plan -> Avoid, Found path");
@@ -280,11 +298,9 @@ bool AstarAvoid::planAvoidWaypoints()
 
   int plan_start_global_index = current_global_index_;
 
-  auto it = plan_start_global_index + obstacle_local_index_ + stopline_ahead_num_ + 1 >
-                    static_cast<int>(global_waypoints_.waypoints.size()) ?
+  auto it = obstacle_global_index_ + stopline_ahead_num_ + 1 > static_cast<int>(global_waypoints_.waypoints.size()) ?
                 global_waypoints_.waypoints.end() :
-                global_waypoints_.waypoints.begin() + plan_start_global_index + obstacle_local_index_ +
-                    stopline_ahead_num_ + 1;
+                global_waypoints_.waypoints.begin() + obstacle_global_index_ + stopline_ahead_num_ + 1;
   if (prohibit_stopline_)
   {
     if (std::find_if(global_waypoints_.waypoints.begin() + plan_start_global_index, it,
@@ -307,23 +323,19 @@ bool AstarAvoid::planAvoidWaypoints()
   for (int i = search_waypoints_delta_; i < static_cast<int>(search_waypoints_size_); i += search_waypoints_delta_)
   {
     // update goal index
-    // Note: obstacle_local_index_ is supposed to be relative to plan_start_global_index.
-    //       However, obstacle_local_index_ is published by velocity_set node. The astar_avoid and velocity_set
-    //       should be combined together to prevent this kind of inconsistency.
-    int obstacle_global_index = plan_start_global_index + obstacle_local_index_ + i;
-    if (obstacle_global_index >= static_cast<int>(global_waypoints_.waypoints.size()))
+    int goal_global_index = obstacle_global_index_ + i;
+    if (goal_global_index >= static_cast<int>(global_waypoints_.waypoints.size()))
     {
       break;
     }
 
     if (prohibit_stopline_)
     {
-      auto it2 =
-          obstacle_global_index + stopline_ahead_num_ + 1 > static_cast<int>(global_waypoints_.waypoints.size()) ?
-              global_waypoints_.waypoints.end() :
-              global_waypoints_.waypoints.begin() + obstacle_global_index + stopline_ahead_num_ + 1;
-      auto result = std::find_if(global_waypoints_.waypoints.begin() + obstacle_global_index - search_waypoints_delta_,
-                                 it2, [](const autoware_msgs::Waypoint& wp) {
+      auto it2 = goal_global_index + stopline_ahead_num_ + 1 > static_cast<int>(global_waypoints_.waypoints.size()) ?
+                     global_waypoints_.waypoints.end() :
+                     global_waypoints_.waypoints.begin() + goal_global_index + stopline_ahead_num_ + 1;
+      auto result = std::find_if(global_waypoints_.waypoints.begin() + goal_global_index - search_waypoints_delta_, it2,
+                                 [](const autoware_msgs::Waypoint& wp) {
                                    return wp.wpstate.stop_state == autoware_msgs::WaypointState::TYPE_STOPLINE;
                                  });
       if (result != it2)
@@ -333,11 +345,11 @@ bool AstarAvoid::planAvoidWaypoints()
     }
 
     // update goal pose
-    goal_pose_global_ = global_waypoints_.waypoints[obstacle_global_index].pose;
+    goal_pose_global_ = global_waypoints_.waypoints[goal_global_index].pose;
     goal_pose_local_.header = costmap_.header;
     goal_pose_local_.pose = transformPose(goal_pose_global_.pose, tf_global2local_start.inverse());
     goal_poses.push_back(goal_pose_local_.pose);
-    goal_indices.push_back(obstacle_global_index);
+    goal_indices.push_back(goal_global_index);
   }
 
   if (goal_poses.empty())
