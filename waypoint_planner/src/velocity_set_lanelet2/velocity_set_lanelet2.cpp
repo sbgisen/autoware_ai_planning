@@ -440,7 +440,7 @@ EControl crossWalkDetection(const VelocitySetInfo& vs_info, const pcl::PointClou
     {
       geometry_msgs::Point point_geom, transformed_point_geom;
       lanelet::utils::conversion::toGeomMsgPt(point, &point_geom);
-      transformed_point_geom = calcRelativeCoordinate(point_geom, vs_info.getLocalizerPose());
+      transformed_point_geom = calcRelativeCoordinate(point_geom, vs_info.getControlPose().pose);
       lanelet::BasicPoint2d transformed_point2d(transformed_point_geom.x, transformed_point_geom.y);
       transformed_poly2d.push_back(transformed_point2d);
     }
@@ -458,7 +458,7 @@ EControl crossWalkDetection(const VelocitySetInfo& vs_info, const pcl::PointClou
         point_temp.x = p.x;
         point_temp.y = p.y;
         point_temp.z = p.z;
-        obstacle_points->setStopPoint(calcAbsoluteCoordinate(point_temp, vs_info.getLocalizerPose()));
+        obstacle_points->setStopPoint(calcAbsoluteCoordinate(point_temp, vs_info.getControlPose().pose));
       }
       if (stop_count > vs_info.getPointsThreshold())
       {
@@ -1044,7 +1044,7 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
   int stop_obstacle_waypoint = -1;
   *obstacle_type = EObstacleType::NONE;
   // Search from control pose(current robot position)
-  geometry_msgs::Pose current_pose = vs_info.getLocalizerPose();
+  geometry_msgs::Pose current_pose = vs_info.getControlPose().pose;  // control_pseo:base_link, localizer_pose:lidar
 
   // start search from the closest waypoint
   for (int i = closest_waypoint; i < closest_waypoint + stop_search_distance; i++)
@@ -1166,6 +1166,7 @@ int detectDecelerateObstacle(const VelocitySetInfo& vs_info, const pcl::PointClo
                              const bool disable_side_deceleration)
 {
   int decelerate_obstacle_waypoint = -1;
+  geometry_msgs::Pose current_pose = vs_info.getControlPose().pose;  // control_pseo:base_link, localizer_pose:lidar
   // start search from the closest waypoint
   for (int i = closest_waypoint; i < closest_waypoint + deceleration_search_distance; i++)
   {
@@ -1174,7 +1175,7 @@ int detectDecelerateObstacle(const VelocitySetInfo& vs_info, const pcl::PointClo
       break;
 
     // Get the coordinates of the current waypoint
-    geometry_msgs::Pose waypoint_pose = getRelativePose(vs_info.getLocalizerPose(), lane.waypoints[i].pose.pose);
+    geometry_msgs::Pose waypoint_pose = getRelativePose(current_pose, lane.waypoints[i].pose.pose);
     waypoint_pose.position.z = 0;
 
     // Detect obstacles at the current waypoint
@@ -1195,8 +1196,7 @@ int detectDecelerateObstacle(const VelocitySetInfo& vs_info, const pcl::PointClo
         }
         if (i < static_cast<int>(lane.waypoints.size()) - 1 && !in_collision)
         {
-          geometry_msgs::Pose next_waypoint_pose =
-              getRelativePose(vs_info.getLocalizerPose(), lane.waypoints[i + 1].pose.pose);
+          geometry_msgs::Pose next_waypoint_pose = getRelativePose(current_pose, lane.waypoints[i + 1].pose.pose);
           next_waypoint_pose.position.z = 0;
           in_collision = isPointInRectWaypoint2Waypoint(
               point_vector, waypoint_pose, next_waypoint_pose, vs_info.getRobotLength(), vs_info.getRobotWidth(),
@@ -1219,8 +1219,7 @@ int detectDecelerateObstacle(const VelocitySetInfo& vs_info, const pcl::PointClo
         }
         if (i < static_cast<int>(lane.waypoints.size()) - 1 && !in_collision)
         {
-          geometry_msgs::Pose next_waypoint_pose =
-              getRelativePose(vs_info.getLocalizerPose(), lane.waypoints[i + 1].pose.pose);
+          geometry_msgs::Pose next_waypoint_pose = getRelativePose(current_pose, lane.waypoints[i + 1].pose.pose);
           next_waypoint_pose.position.z = 0;
           in_collision = isPointInCurcleWaypoint2Waypoint(point_vector, waypoint_pose, next_waypoint_pose,
                                                           vs_info.getDecelerationRange(), vs_info.getMaxSearchRange());
@@ -1242,7 +1241,7 @@ int detectDecelerateObstacle(const VelocitySetInfo& vs_info, const pcl::PointClo
         point_temp.x = p.x;
         point_temp.y = p.y;
         point_temp.z = p.z;
-        obstacle_points->setDeceleratePoint(calcAbsoluteCoordinate(point_temp, vs_info.getLocalizerPose()));
+        obstacle_points->setDeceleratePoint(calcAbsoluteCoordinate(point_temp, current_pose));
       }
     }
 
@@ -1424,9 +1423,9 @@ void displayDetectionRange(const VelocitySetInfo& vs_info, const autoware_msgs::
   std::reverse(crosswalk_marker.points.begin(), crosswalk_marker.points.end());
   crosswalk_marker.frame_locked = true;
 
-  // Set vs_info.getLocalizerPose() as origin
+  // Set vs_info.getControlPose() as origin
   geometry_msgs::Point origin;
-  origin = vs_info.getLocalizerPose().position;
+  origin = vs_info.getControlPose().pose.position;
   waypoint_marker_decelerate.points.push_back(origin);
   waypoint_marker_stop.points.push_back(origin);
 
