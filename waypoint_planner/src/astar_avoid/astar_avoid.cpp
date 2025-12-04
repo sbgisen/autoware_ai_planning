@@ -193,6 +193,7 @@ void AstarAvoid::runAstarAvoidTransition()
   {
     obstacle_local_index_ = -1;
     is_move_ = !request_aster_planning;
+    request_aster_planning = false;
   }
   else if (request_aster_planning)
   {
@@ -208,6 +209,7 @@ void AstarAvoid::runAstarAvoidTransition()
       planning_retry_count_ = 0;
       avoid_current_merged_index_ =
           updateCurrentIndex(avoid_merged_waypoints_, current_pose_global_.pose, avoid_current_merged_index_);
+      start_avoid_time_ = ros::WallTime::now();
     }
     else
     {
@@ -222,7 +224,6 @@ void AstarAvoid::runAstarAvoidTransition()
         planning_retry_count_ = 0;
       }
     }
-    start_avoid_time_ = ros::WallTime::now();
   }
   // Check if goal reached
   if (select_way_ == AstarAvoid::WayType::AVOID && is_move_)
@@ -365,7 +366,11 @@ bool AstarAvoid::planAvoidWaypoints()
 
   // execute astar search
   found_path = astar_.makePlan(current_pose_local_.pose, goal_poses);
-  if (found_path && !astar_.getPath().poses.empty())
+  if (astar_.getPath().poses.empty())
+  {
+    found_path = false;
+  }
+  if (found_path)
   {
     debug_pub_.publish(astar_.getPath());
     avoid_start_global_index_ = plan_start_global_index;
@@ -388,7 +393,6 @@ bool AstarAvoid::planAvoidWaypoints()
       found_path = false;
     }
   }
-
   ROS_ERROR("Can't find goal. Retry. current_global_index_ = %d, obstacle_local_index_ = %d, global_waypoints_size = "
             "%zu",
             current_global_index_, obstacle_local_index_, global_waypoints_.waypoints.size());
