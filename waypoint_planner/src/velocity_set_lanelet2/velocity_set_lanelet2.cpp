@@ -232,46 +232,63 @@ void fillWaypointStopSymbolMarkers(const geometry_msgs::Pose& symbol_pose, visua
 
 void publishStopReasonMarkers(const VelocitySetInfo& vs_info, const VelocitySetPath& vs_path,
                               const EControl& detection_result, const int closest_waypoint,
-                              const ros::Publisher& marker_pub)
+                              const ros::Publisher& marker_pub, const bool mark_stopline_if_both)
 {
   visualization_msgs::MarkerArray array;
   static bool prev_visible = false;
 
-  // Determine if the robot is almost stopped
-  const double stop_vel_threshold = 0.1;  // [m/s]
-  bool is_stopped = std::fabs(vs_path.getCurrentVelocity()) < stop_vel_threshold;
+  const double stop_vel_threshold = 0.1;
+  const bool is_stopped = std::fabs(vs_path.getCurrentVelocity()) < stop_vel_threshold;
 
   EStopReason reason = EStopReason::NONE;
 
+  bool obstacle_stop = false;
+  bool waypoint_stop = false;
+
   if (is_stopped)
   {
+    // Obstacle/stopline-based stop
     if (detection_result == EControl::STOP || detection_result == EControl::STOPLINE)
+      obstacle_stop = true;
+
+    // Waypoint zero velocity check
+    const autoware_msgs::Lane lane = vs_path.getPrevWaypoints();
+    if (closest_waypoint >= 0 && closest_waypoint < (int)lane.waypoints.size())
     {
-      reason = EStopReason::OBSTACLE;
-    }
-    else
-    {
-      // Check if original waypoints around the current index have zero velocity
-      const autoware_msgs::Lane lane = vs_path.getPrevWaypoints();
-      if (closest_waypoint >= 0 && closest_waypoint < static_cast<int>(lane.waypoints.size()))
+      const int search_range = 10;
+      for (int i = closest_waypoint; i < std::min(closest_waypoint + search_range, (int)lane.waypoints.size()); ++i)
       {
-        const int search_range = 10;
-        for (int i = closest_waypoint;
-             i < std::min(closest_waypoint + search_range, static_cast<int>(lane.waypoints.size())); ++i)
+        if (std::fabs(lane.waypoints[i].twist.twist.linear.x) < 0.01)
         {
-          if (std::fabs(lane.waypoints[i].twist.twist.linear.x) < 0.01)
-          {
-            reason = EStopReason::ORIGINAL_WAYPOINT;
-            break;
-          }
+          waypoint_stop = true;
+          break;
         }
       }
     }
   }
 
+  // Decide final reason with priority handling
+  if (!obstacle_stop && !waypoint_stop)
+  {
+    reason = EStopReason::NONE;
+  }
+  else if (obstacle_stop && waypoint_stop)
+  {
+    // both → choose by parameter
+    reason = mark_stopline_if_both ? EStopReason::ORIGINAL_WAYPOINT : EStopReason::OBSTACLE;
+  }
+  else if (obstacle_stop)
+  {
+    reason = EStopReason::OBSTACLE;
+  }
+  else
+  {
+    reason = EStopReason::ORIGINAL_WAYPOINT;
+  }
+
+  // No stop reason → remove markers
   if (reason == EStopReason::NONE)
   {
-    // Delete previous markers if they were visible
     if (prev_visible)
     {
       for (int id : { 0, 1, 2, 10, 11, 12 })
@@ -1612,6 +1629,7 @@ int main(int argc, char** argv)
   bool enable_multiple_crosswalk_detection;
   bool enablePlannerDynamicSwitch;
   bool disable_side_deceleration;
+  bool mark_stopline_if_both;
   std::string points_topic;
   int deceleration_search_distance;
   int stop_search_distance;
@@ -1625,6 +1643,8 @@ int main(int argc, char** argv)
   private_rosnode.param<std::string>("points_topic", points_topic, "points_lanes");
   private_rosnode.param<int>("deceleration_search_distance", deceleration_search_distance, 30);
   private_rosnode.param<int>("stop_search_distance", stop_search_distance, 60);
+  // priority when both obstacle stop and waypoint stop conditions are satisfied
+  private_rosnode.param<bool>("mark_stopline_if_both", mark_stopline_if_both, true);
 
   VelocitySetPath vs_path;
   VelocitySetInfo vs_info;
@@ -1708,7 +1728,8 @@ int main(int argc, char** argv)
     changeWaypoints(vs_info, detection_result, closest_waypoint, obstacle_waypoint, final_waypoints_pub, &vs_path);
 
     // Publish stop-reason symbol above and behind the robot
-    publishStopReasonMarkers(vs_info, vs_path, detection_result, closest_waypoint, stop_reason_marker_pub);
+    publishStopReasonMarkers(vs_info, vs_path, detection_result, closest_waypoint, stop_reason_marker_pub,
+                             mark_stopline_if_both);
 
     vs_info.clearPoints();
 
