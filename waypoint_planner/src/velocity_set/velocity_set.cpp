@@ -525,8 +525,9 @@ void changeWaypoints(const VelocitySetInfo& vs_info, const EControl& detection_r
   {  // KEEP
     vs_path->initializeNewWaypoints();
   }
-  vs_path->avoidSuddenDeceleration(vs_info.getVelocityChangeLimit(), deceleration, closest_waypoint);
+  vs_path->avoidSuddenDeceleration(deceleration, closest_waypoint);
   vs_path->avoidSuddenAcceleration(deceleration, closest_waypoint);
+  vs_path->limitDecelerationFromCurrentVelocity(vs_info.getVelocityChangeLimit(), closest_waypoint);
 }
 
 }  // end namespace
