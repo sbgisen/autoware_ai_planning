@@ -63,20 +63,20 @@ public:
   vector_map::LineArray line_;
   vector_map::PointArray point_;
 
-  void crossWalkCallback(const vector_map::CrossWalkArray &msg);
-  void areaCallback(const vector_map::AreaArray &msg);
-  void lineCallback(const vector_map::LineArray &msg);
-  void pointCallback(const vector_map::PointArray &msg);
+  void crossWalkCallback(const vector_map::CrossWalkArray& msg);
+  void areaCallback(const vector_map::AreaArray& msg);
+  void lineCallback(const vector_map::LineArray& msg);
+  void pointCallback(const vector_map::PointArray& msg);
 
   int countAreaSize() const;
-  void getAID(std::unordered_map<int, std::vector<int>> &aid_crosswalk) const;
-  void calcDetectionArea(const std::unordered_map<int, std::vector<int>> &bdid2aid_map);
-  geometry_msgs::Point calcCenterofGravity(const int &aid) const;
-  double calcCrossWalkWidth(const int &aid) const;
-  geometry_msgs::Point getPoint(const int &pid) const;
+  void getAID(std::unordered_map<int, std::vector<int>>& aid_crosswalk) const;
+  void calcDetectionArea(const std::unordered_map<int, std::vector<int>>& bdid2aid_map);
+  geometry_msgs::Point calcCenterofGravity(const int& aid) const;
+  double calcCrossWalkWidth(const int& aid) const;
+  geometry_msgs::Point getPoint(const int& pid) const;
   void calcCenterPoints();
   void setCrossWalkPoints();
-  int findClosestCrosswalk(const int closest_waypoint, const autoware_msgs::Lane &lane, const int search_distance);
+  int findClosestCrosswalk(const int closest_waypoint, const autoware_msgs::Lane& lane, const int search_distance);
   int getSize() const
   {
     return detection_points_.size();
@@ -85,11 +85,11 @@ public:
   {
     return bdID_;
   }
-  const CrossWalkPoints& getDetectionPoints(const int &id) const
+  const CrossWalkPoints& getDetectionPoints(const int& id) const
   {
     return detection_points_.at(id);
   }
-  void setDetectionWaypoint(const int &num)
+  void setDetectionWaypoint(const int& num)
   {
     detection_waypoint_ = num;
   }
@@ -97,7 +97,7 @@ public:
   {
     return detection_waypoint_;
   }
-  void setDetectionCrossWalkID(const int &id)
+  void setDetectionCrossWalkID(const int& id)
   {
     detection_crosswalk_id_ = id;
   }
@@ -110,7 +110,7 @@ public:
   {
     return detection_crosswalk_array_.clear();
   }
-  void addDetectionCrossWalkIDs(const int &id)
+  void addDetectionCrossWalkIDs(const int& id)
   {
     auto itr = std::find(detection_crosswalk_array_.begin(), detection_crosswalk_array_.end(), id);
     if (itr == detection_crosswalk_array_.end())
@@ -156,15 +156,15 @@ private:
   geometry_msgs::Point previous_detection_;
 
 public:
-  void setStopPoint(const geometry_msgs::Point &p)
+  void setStopPoint(const geometry_msgs::Point& p)
   {
     stop_points_.push_back(p);
   }
-  void setDeceleratePoint(const geometry_msgs::Point &p)
+  void setDeceleratePoint(const geometry_msgs::Point& p)
   {
     decelerate_points_.push_back(p);
   }
-  geometry_msgs::Point getObstaclePoint(const EControl &kind) const;
+  geometry_msgs::Point getObstaclePoint(const EControl& kind) const;
   void clearStopPoints()
   {
     stop_points_.clear();
@@ -179,13 +179,13 @@ public:
   }
 };
 
-inline double calcSquareOfLength(const geometry_msgs::Point &p1, const geometry_msgs::Point &p2)
+inline double calcSquareOfLength(const geometry_msgs::Point& p1, const geometry_msgs::Point& p2)
 {
   return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
 }
 
 // Calculate waypoint index corresponding to distance from begin_waypoint
-inline int calcWaypointIndexReverse(const autoware_msgs::Lane &lane, const int begin_waypoint, const double distance)
+inline int calcWaypointIndexReverse(const autoware_msgs::Lane& lane, const int begin_waypoint, const double distance)
 {
   double dist_sum = 0;
   for (int i = begin_waypoint; i > 0; i--)
@@ -202,6 +202,25 @@ inline int calcWaypointIndexReverse(const autoware_msgs::Lane &lane, const int b
 
   // reach the first waypoint
   return 0;
+}
+
+inline int calcWaypointIndexForward(const autoware_msgs::Lane& lane, const int begin_waypoint, const double distance)
+{
+  double dist_sum = 0;
+  for (size_t i = begin_waypoint; i < lane.waypoints.size() - 1; i++)
+  {
+    tf::Vector3 v1(lane.waypoints[i].pose.pose.position.x, lane.waypoints[i].pose.pose.position.y, 0);
+
+    tf::Vector3 v2(lane.waypoints[i + 1].pose.pose.position.x, lane.waypoints[i + 1].pose.pose.position.y, 0);
+
+    dist_sum += tf::tfDistance(v1, v2);
+
+    if (dist_sum > distance)
+      return i;
+  }
+
+  // reach the last waypoint
+  return static_cast<int>(lane.waypoints.size() - 1);
 }
 
 #endif /* _VELOCITY_SET_H */
