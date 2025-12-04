@@ -477,14 +477,14 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 vec_robot_to_point, const g
                                    const double margin, const double max_search_range,
                                    const bool disable_back_collision_check)
 {
-  constexpr double EPS = 1e-4;
+  constexpr double epsilon = 1e-9;
 
   // Vector from robot origin to the goal pose (in robot frame)
   tf::Vector3 vec_robot_to_goal(goal_pose_in_robot.position.x, goal_pose_in_robot.position.y, 0.0);
 
   // Relative forward/backward direction (+x is robot front)
-  bool point_is_in_front = (vec_robot_to_point.x() >= 0.0);
-  bool goal_is_in_front = (vec_robot_to_goal.x() >= 0.0);
+  bool point_is_in_front = (vec_robot_to_point.x() > -epsilon);
+  bool goal_is_in_front = (vec_robot_to_goal.x() > -epsilon);
   bool move_forward = goal_is_in_front;
 
   // Reject points outside the detection radius
@@ -493,7 +493,7 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 vec_robot_to_point, const g
 
   // Determine whether the path is straight or turning
   double goal_direction = normalizeAngle(std::atan2(vec_robot_to_goal.y(), vec_robot_to_goal.x()));
-  bool is_straight_path = (fabs(goal_direction) < EPS || fabs(vec_robot_to_goal.y()) < EPS);
+  bool is_straight_path = (fabs(goal_direction) < epsilon || fabs(vec_robot_to_goal.y()) < epsilon);
 
   // For straight paths, ignore points on the opposite side of movement direction
   if (is_straight_path)
@@ -511,7 +511,7 @@ bool isPointInRectCurrent2Waypoint(const tf::Vector3 vec_robot_to_point, const g
     return true;
 
   // If the goal is extremely close to the start, skip goal-based checks
-  if (vec_robot_to_goal.length() < EPS)
+  if (vec_robot_to_goal.length() < epsilon)
     return false;
 
   // Goal pose yaw relative to robot frame (circular trajectory approximation)
@@ -1091,15 +1091,20 @@ int detectStopObstacle(const VelocitySetInfo& vs_info, const pcl::PointCloud<pcl
     waypoint_pose.position.z = 0;
 
     double current_index_vel = lane.waypoints[i].twist.twist.linear.x;
+    double epsilon = 1.0e-6;
 
     // avoid the case where waypoint is in the opposite direction to the target velocity
-    if (waypoint_pose.position.x < 0 && current_index_vel > 1.0e-4)
+    if (waypoint_pose.position.x < 0 && current_index_vel > epsilon)
     {
-      waypoint_pose.position.x = 1.0e-4;
+      waypoint_pose.position.x = epsilon;
     }
-    else if (waypoint_pose.position.x > 0 && current_index_vel < -1.0e-4)
+    else if (waypoint_pose.position.x > 0 && current_index_vel < -epsilon)
     {
-      waypoint_pose.position.x = -1.0e-4;
+      waypoint_pose.position.x = -epsilon;
+    }
+    else if (fabs(waypoint_pose.position.x) < epsilon)
+    {
+      waypoint_pose.position.x = (current_index_vel > -epsilon) ? epsilon : -epsilon;
     }
 
     // Detect obstacles at the current waypoint
