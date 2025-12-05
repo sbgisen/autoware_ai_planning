@@ -245,6 +245,7 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   }
 
   // Recovery 条件
+  const bool cond_zero_velocity = (fabs(output_velocity) < 0.001);
   const bool cond_reverse_direction =
       (target_pose_local.position.x * output_velocity < 0.0) && (std::fabs(output_velocity) > eps_v);
 
@@ -255,26 +256,19 @@ bool PurePursuit::canGetCurvature(double& output_kappa, double& output_velocity)
   const bool cond_misaligned_direction =
       (std::fabs(motion_target_direction) > M_PI * 0.5) && (std::fabs(output_velocity) > eps_v);
 
-  const bool recovery_mode = cond_reverse_direction || cond_large_yaw || cond_too_far || cond_misaligned_direction;
+  const bool recovery_mode =
+      !cond_zero_velocity && (cond_reverse_direction || cond_large_yaw || cond_too_far || cond_misaligned_direction);
 
   // Recovery mode
   if (recovery_mode)
   {
     const double max_recovery_angle = M_PI * 0.25;  // 45 deg
 
-    // Handle velocity: if almost zero, give default recovery velocity
-    if (std::fabs(output_velocity) <= eps_v)
-    {
-      output_velocity = RECOVERY_VEL_;
-    }
+    // Limit recovery speed
+    if (output_velocity > 0.0)
+      output_velocity = std::min(output_velocity, RECOVERY_VEL_);
     else
-    {
-      // Limit recovery speed
-      if (output_velocity > 0.0)
-        output_velocity = std::min(output_velocity, RECOVERY_VEL_);
-      else
-        output_velocity = std::max(output_velocity, -RECOVERY_VEL_);
-    }
+      output_velocity = std::max(output_velocity, -RECOVERY_VEL_);
 
     const double vel_sign = (output_velocity > 0.0) ? 1.0 : -1.0;
     const double angle_abs = std::fabs(motion_target_direction);
