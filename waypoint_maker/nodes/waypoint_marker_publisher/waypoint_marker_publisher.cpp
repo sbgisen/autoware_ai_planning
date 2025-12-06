@@ -129,6 +129,58 @@ void createGlobalLaneArrayVelocityMarker(const autoware_msgs::LaneArray& lane_wa
                                        tmp_marker_array.markers.end());
 }
 
+void createGlobalStopSphereMarker(const autoware_msgs::LaneArray& lane_waypoints_array)
+{
+  visualization_msgs::Marker stop_marker;
+  stop_marker.header.frame_id = "map";
+  stop_marker.header.stamp = ros::Time::now();
+  stop_marker.ns = "global_stop_sphere";
+  stop_marker.id = 0;
+  stop_marker.type = visualization_msgs::Marker::SPHERE_LIST;
+  stop_marker.action = visualization_msgs::Marker::ADD;
+  stop_marker.scale.x = 0.25;  // localより大きめでもOK
+  stop_marker.scale.y = 0.25;
+  stop_marker.scale.z = 0.25;
+  stop_marker.frame_locked = true;
+
+  const double stop_threshold_mps = 1.0e-4;
+
+  // global marker array に積み増しするため、一旦空にしない
+  // → local のように毎回クリアしない前提
+
+  for (const auto& lane : lane_waypoints_array.lanes)
+  {
+    if (lane.waypoints.empty())
+      continue;
+
+    const double base_z = lane.waypoints.front().pose.pose.position.z;
+
+    for (const auto& wp : lane.waypoints)
+    {
+      const double v = wp.twist.twist.linear.x;
+
+      if (std::fabs(v) < stop_threshold_mps)
+      {
+        // 停止点だけ赤で追加
+        geometry_msgs::Point p = wp.pose.pose.position;
+        p.z = base_z;  // 高さ基準合わせ
+
+        stop_marker.points.push_back(p);
+
+        std_msgs::ColorRGBA c;
+        c.a = 0.8;
+        c.r = 1.0;
+        c.g = 0.0;
+        c.b = 0.0;
+        stop_marker.colors.push_back(c);
+      }
+    }
+  }
+
+  // global の marker array に追加
+  g_global_marker_array.markers.push_back(stop_marker);
+}
+
 void createGlobalLaneArrayIndexMarker(const autoware_msgs::LaneArray& lane_waypoints_array)
 {
   visualization_msgs::MarkerArray tmp_marker_array;
@@ -700,11 +752,12 @@ void laneArrayCallback(const autoware_msgs::LaneArrayConstPtr& msg)
 {
   publishMarkerArray(g_global_marker_array, g_global_mark_pub, true);
   g_global_marker_array.markers.clear();
-  // createGlobalLaneArrayVelocityMarker(*msg);
+  createGlobalStopSphereMarker(*msg);
+  createGlobalLaneArrayVelocityMarker(*msg);
   // createGlobalLaneArrayOrientationMarker(*msg);
   // createGlobalLaneArrayChangeFlagMarker(*msg);
   // createGlobalLaneArrayTurnMarker(*msg);
-  createGlobalLaneArrayIndexMarker(*msg);
+  // createGlobalLaneArrayIndexMarker(*msg);
   publishMarkerArray(g_global_marker_array, g_global_mark_pub);
 }
 
