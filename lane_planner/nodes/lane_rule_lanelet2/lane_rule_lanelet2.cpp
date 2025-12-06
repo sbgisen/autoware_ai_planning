@@ -499,6 +499,8 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
 
     // Decide reference index for low speed
     int ref_idx = slow_end_idx;
+    if (ref_idx > 1)
+      ref_idx -= 1;
     if (ref_idx < 0 || ref_idx >= N)
       continue;
 
@@ -543,26 +545,26 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
     // 3. Downstream: accelerate back from v_low toward original
     //    start from zero_start_idx (no 0 m/s zone here)
     //    v^2 <= v_low^2 + 2 * a_acc * d
-    if (a_acc > 0.0 && zero_start_idx < N)
-    {
-      double dist = 0.0;
-      for (int j = zero_start_idx; j < N; ++j)
-      {
-        if (j > zero_start_idx)
-        {
-          const geometry_msgs::Point& p0 = output_lane.waypoints[j - 1].pose.pose.position;
-          const geometry_msgs::Point& p1 = output_lane.waypoints[j].pose.pose.position;
-          dist += hypot(p1.x - p0.x, p1.y - p0.y);
-        }
+    // if (a_acc > 0.0 && zero_start_idx < N)
+    // {
+    //   double dist = 0.0;
+    //   for (int j = zero_start_idx; j < N; ++j)
+    //   {
+    //     if (j > zero_start_idx)
+    //     {
+    //       const geometry_msgs::Point& p0 = output_lane.waypoints[j - 1].pose.pose.position;
+    //       const geometry_msgs::Point& p1 = output_lane.waypoints[j].pose.pose.position;
+    //       dist += hypot(p1.x - p0.x, p1.y - p0.y);
+    //     }
 
-        const double v_allowed = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_acc * dist));
-        const int sgn = (output_vel[j] >= 0.0) ? 1 : -1;
-        const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_allowed);
+    //     const double v_allowed = std::sqrt(std::max(0.0, v_low_sq + 2.0 * a_acc * dist));
+    //     const int sgn = (output_vel[j] >= 0.0) ? 1 : -1;
+    //     const double v_mag = std::min(std::min(std::fabs(output_vel[j]), std::fabs(orig_vel[j])), v_allowed);
 
-        output_vel[j] = sgn * v_mag;
-        output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
-      }
-    }
+    //     output_vel[j] = sgn * v_mag;
+    //     output_lane.waypoints[j].twist.twist.linear.x = output_vel[j];
+    //   }
+    // }
   }
 
   return output_lane;
