@@ -499,12 +499,10 @@ autoware_msgs::Lane apply_slowdown_only(const autoware_msgs::Lane& lane, const s
 
     // Decide reference index for low speed
     int ref_idx = slow_end_idx;
-    if (ref_idx > 1)
-      ref_idx -= 1;
     if (ref_idx < 0 || ref_idx >= N)
       continue;
 
-    const double v_orig_ref = orig_vel[ref_idx];
+    const double v_orig_ref = 1.67;  // orig_vel[ref_idx];
     if (std::fabs(v_orig_ref) < 1.0e-4)
       continue;
 
